@@ -11,6 +11,7 @@ import Image from "next/image"
 
 export default function ManualVerificationPage() {
   const [token, setToken] = useState("")
+  const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -21,15 +22,21 @@ export default function ManualVerificationPage() {
       return
     }
 
+    if (!email) {
+      setError("Please enter your email address")
+      return
+    }
+
     setLoading(true)
     setError(null)
 
     try {
-      // Store token in session storage
+      // Store token and email in session storage
       sessionStorage.setItem("registrationToken", token)
+      sessionStorage.setItem("registrationEmail", email)
 
       // Redirect to password creation page
-      router.push(`/register/set-password?token=${token}`)
+      router.push(`/register/set-password?token=${token}&email=${encodeURIComponent(email)}`)
     } catch (err: any) {
       console.error("Error during verification:", err)
       setError(err.message || "Failed to verify token. Please try again.")
@@ -61,6 +68,20 @@ export default function ManualVerificationPage() {
           )}
 
           <div className="space-y-4">
+            <div>
+              <Label htmlFor="email" className="text-[#f8f5f2] mb-2 block text-left">
+                Email Address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-[#0f2d3c] border-[#2a4a5a]"
+                placeholder="Enter your email address"
+              />
+            </div>
+
             <div>
               <Label htmlFor="token" className="text-[#f8f5f2] mb-2 block text-left">
                 Verification Token

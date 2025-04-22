@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     // Create the verification URL with the correct base URL
     // Make sure the URL doesn't have double slashes
-    const verificationUrl = `${appUrl.replace(/\/$/, "")}/register/set-password?token=${token}`
+    const verificationUrl = `${appUrl.replace(/\/$/, "")}/register/set-password?token=${token}&email=${encodeURIComponent(email)}`
 
     // Create a simple HTML email template
     const htmlContent = `

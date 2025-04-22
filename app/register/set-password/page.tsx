@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import supabaseClient from "@/lib/supabase"
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState("")
@@ -24,7 +24,6 @@ export default function SetPasswordPage() {
   const [email, setEmail] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClientComponentClient()
 
   // Password validation states
   const [validations, setValidations] = useState({
@@ -39,6 +38,7 @@ export default function SetPasswordPage() {
   useEffect(() => {
     // Get token from URL query parameters
     const urlToken = searchParams.get("token")
+
     if (urlToken) {
       setToken(urlToken)
 
@@ -46,13 +46,10 @@ export default function SetPasswordPage() {
       const storedEmail = sessionStorage.getItem("registrationEmail")
       if (storedEmail) {
         setEmail(storedEmail)
-      } else {
-        // If no email in session storage, redirect to registration
-        router.push("/register")
       }
     } else {
-      // No token provided, redirect to registration
-      router.push("/register")
+      // No token provided, redirect to manual verification
+      router.push("/register/manual-verification")
     }
   }, [searchParams, router])
 
@@ -84,29 +81,28 @@ export default function SetPasswordPage() {
         throw new Error("Password does not meet all requirements")
       }
 
+      // If we don't have an email, prompt the user to enter it
       if (!email) {
-        throw new Error("Email not found. Please restart the registration process.")
+        const emailInput = prompt("Please enter your email address to complete registration:")
+        if (!emailInput) {
+          throw new Error("Email is required to complete registration")
+        }
+        setEmail(emailInput)
+        sessionStorage.setItem("registrationEmail", emailInput)
       }
 
       // Get customer data from session storage
       const customerDataStr = sessionStorage.getItem("customerData")
-      if (!customerDataStr) {
-        throw new Error("Customer data not found. Please restart the registration process.")
+      let customerData = null
+
+      if (customerDataStr) {
+        customerData = JSON.parse(customerDataStr)
       }
 
-      const customerData = JSON.parse(customerDataStr)
-
-      // First, create the auth user with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Create a new Supabase auth user
+      const { data: authData, error: authError } = await supabaseClient.auth.signUp({
         email: email,
         password: password,
-        options: {
-          data: {
-            first_name: customerData.firstName,
-            last_name: customerData.lastName,
-            title: customerData.pronoun,
-          },
-        },
       })
 
       if (authError) {
@@ -117,50 +113,99 @@ export default function SetPasswordPage() {
         throw new Error("Failed to create user account")
       }
 
-      // Create a transaction to insert customer data
-      const { data: customerResult, error: customerError } = await supabase
-        .from("customers")
-        .insert([
+      // If we have customer data, create a customer record
+      if (customerData) {
+        // Create a transaction to insert customer data
+        const { data: customerResult, error: customerError } = await supabaseClient
+          .from("customers")
+          .insert([
+            {
+              firstname: customerData.firstName,
+              lastname: customerData.lastName,
+              email: email,
+              dateofbirth: customerData.dateOfBirth,
+              gender: customerData.gender,
+              nationality: customerData.nationality,
+              identitycardnumber: customerData.identityCardNumber,
+              phonenumber: customerData.phoneNumber,
+              country: customerData.country,
+              city: customerData.city,
+              addressline: customerData.address,
+              pronoun: customerData.pronoun || "Prefer not to say",
+              contactname: `${customerData.firstName} ${customerData.lastName}`,
+            },
+          ])
+          .select("customerid")
+          .single()
+
+        if (customerError) {
+          throw new Error(`Error creating customer: ${customerError.message}`)
+        }
+
+        // Get the customer ID
+        const customerId = customerResult.customerid
+
+        // Create user record with the auth user ID
+        const { error: userError } = await supabaseClient.from("users").insert([
           {
-            firstname: customerData.firstName,
-            lastname: customerData.lastName,
-            email: email,
-            dateofbirth: customerData.dateOfBirth,
-            gender: customerData.gender,
-            nationality: customerData.nationality,
-            identitycardnumber: customerData.identityCardNumber,
-            phonenumber: customerData.phoneNumber,
-            country: customerData.country,
-            city: customerData.city,
-            addressline: customerData.address,
-            pronoun: customerData.pronoun || "Prefer not to say",
-            contactname: `${customerData.firstName} ${customerData.lastName}`,
+            userid: authData.user.id,
+            customerid: customerId,
+            username: email,
+            pointsavailable: 0,
+            accountstatus: "active",
+            dateregistered: new Date().toISOString(),
           },
         ])
-        .select("customerid")
-        .single()
 
-      if (customerError) {
-        throw new Error(`Error creating customer: ${customerError.message}`)
-      }
+        if (userError) {
+          throw new Error(`Error creating user: ${userError.message}`)
+        }
+      } else {
+        // Create minimal customer data
+        const { data: customerResult, error: customerError } = await supabaseClient
+          .from("customers")
+          .insert([
+            {
+              firstname: "New",
+              lastname: "User",
+              email: email,
+              dateofbirth: new Date().toISOString(),
+              gender: "prefer-not-to-say",
+              nationality: "VN",
+              identitycardnumber: "Unknown",
+              phonenumber: "Unknown",
+              country: "VN",
+              city: "Unknown",
+              addressline: "Unknown",
+              pronoun: "Prefer not to say",
+              contactname: "New User",
+            },
+          ])
+          .select("customerid")
+          .single()
 
-      // Get the customer ID
-      const customerId = customerResult.customerid
+        if (customerError) {
+          throw new Error(`Error creating customer: ${customerError.message}`)
+        }
 
-      // Create user record with the auth user ID
-      const { error: userError } = await supabase.from("users").insert([
-        {
-          userid: authData.user.id,
-          customerid: customerId,
-          username: email,
-          pointsavailable: 0,
-          accountstatus: "active",
-          dateregistered: new Date().toISOString(),
-        },
-      ])
+        // Get the customer ID
+        const customerId = customerResult.customerid
 
-      if (userError) {
-        throw new Error(`Error creating user: ${userError.message}`)
+        // Create user record with the auth user ID
+        const { error: userError } = await supabaseClient.from("users").insert([
+          {
+            userid: authData.user.id,
+            customerid: customerId,
+            username: email,
+            pointsavailable: 0,
+            accountstatus: "active",
+            dateregistered: new Date().toISOString(),
+          },
+        ])
+
+        if (userError) {
+          throw new Error(`Error creating user: ${userError.message}`)
+        }
       }
 
       // Success! Show success message and redirect after a delay
