@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
+import supabaseClient from "@/lib/supabase"
 
 export default function ConfirmationPage() {
   const [email, setEmail] = useState("")
@@ -32,14 +33,62 @@ export default function ConfirmationPage() {
 
     setEmail(storedEmail)
 
-    // Send verification email when component mounts
-    const sendEmail = async () => {
+    // Store customer data and send verification email
+    const storeDataAndSendEmail = async () => {
       try {
         setSending(true)
-        const token = sessionStorage.getItem("registrationToken")
 
-        if (!token) {
-          throw new Error("Verification token not found")
+        // Generate a token for verification
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+        sessionStorage.setItem("registrationToken", token)
+
+        // Parse customer data
+        const customerData = JSON.parse(customerDataStr)
+
+        // Create customer record
+        const { data: customerResult, error: customerError } = await supabaseClient
+          .from("customers")
+          .insert([
+            {
+              firstname: customerData.firstName,
+              lastname: customerData.lastName,
+              email: storedEmail,
+              dateofbirth: customerData.dateOfBirth,
+              gender: customerData.gender,
+              nationality: customerData.nationality,
+              identitycardnumber: customerData.identityCardNumber,
+              phonenumber: customerData.phoneNumber,
+              country: customerData.country,
+              city: customerData.city,
+              addressline: customerData.address,
+              pronoun: customerData.pronoun || "Prefer not to say",
+              contactname: `${customerData.firstName} ${customerData.lastName}`,
+            },
+          ])
+          .select("customerid")
+          .single()
+
+        if (customerError) {
+          throw new Error(`Error creating customer: ${customerError.message}`)
+        }
+
+        // Get the customer ID
+        const customerId = customerResult.customerid
+
+        // Create user record with unverified status
+        const { error: userError } = await supabaseClient.from("users").insert([
+          {
+            customerid: customerId,
+            username: storedEmail,
+            passwordhash: "", // Will be updated when user sets password
+            pointsavailable: 0,
+            accountstatus: "unverified",
+            dateregistered: new Date().toISOString(),
+          },
+        ])
+
+        if (userError) {
+          throw new Error(`Error creating user: ${userError.message}`)
         }
 
         // Send the verification email
@@ -48,7 +97,10 @@ export default function ConfirmationPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ email: storedEmail, token }),
+          body: JSON.stringify({
+            email: storedEmail,
+            token,
+          }),
         })
 
         if (!response.ok) {
@@ -58,14 +110,14 @@ export default function ConfirmationPage() {
 
         // Email sent successfully
       } catch (err: any) {
-        console.error("Error sending verification email:", err)
-        setError(err.message || "Failed to send verification email. Please try again.")
+        console.error("Error in registration process:", err)
+        setError(err.message || "Failed to complete registration. Please try again.")
       } finally {
         setSending(false)
       }
     }
 
-    sendEmail()
+    storeDataAndSendEmail()
   }, [router])
 
   const handleResend = async () => {
@@ -111,7 +163,7 @@ export default function ConfirmationPage() {
   const handleManualVerification = () => {
     const token = sessionStorage.getItem("registrationToken")
     if (token) {
-      router.push(`/register/set-password?token=${token}`)
+      router.push(`/register/manual-verification?token=${token}&email=${encodeURIComponent(email)}`)
     } else {
       setError("Verification token not found. Please try again.")
     }

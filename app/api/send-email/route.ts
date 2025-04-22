@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     // Use the provided baseUrl or fall back to the environment variable
     const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || "https://www.cloud-airlines.space/"
 
-    // Create the verification URL with the correct base URL
+    // Create the verification URL with the correct base URL and include email parameter
     // Make sure the URL doesn't have double slashes
     const verificationUrl = `${appUrl.replace(/\/$/, "")}/register/set-password?token=${token}&email=${encodeURIComponent(email)}`
 

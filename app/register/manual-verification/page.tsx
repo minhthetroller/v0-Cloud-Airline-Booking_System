@@ -35,7 +35,7 @@ export default function ManualVerificationPage() {
       sessionStorage.setItem("registrationToken", token)
       sessionStorage.setItem("registrationEmail", email)
 
-      // Redirect to password creation page
+      // Redirect to password creation page with both token and email
       router.push(`/register/set-password?token=${token}&email=${encodeURIComponent(email)}`)
     } catch (err: any) {
       console.error("Error during verification:", err)

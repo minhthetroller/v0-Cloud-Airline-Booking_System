@@ -36,16 +36,22 @@ export default function SetPasswordPage() {
   })
 
   useEffect(() => {
-    // Get token from URL query parameters
+    // Get token and email from URL query parameters
     const urlToken = searchParams.get("token")
+    const urlEmail = searchParams.get("email")
 
     if (urlToken) {
       setToken(urlToken)
 
-      // Try to get email from session storage
-      const storedEmail = sessionStorage.getItem("registrationEmail")
-      if (storedEmail) {
-        setEmail(storedEmail)
+      // If email is in URL, use it
+      if (urlEmail) {
+        setEmail(urlEmail)
+      } else {
+        // Try to get email from session storage
+        const storedEmail = sessionStorage.getItem("registrationEmail")
+        if (storedEmail) {
+          setEmail(storedEmail)
+        }
       }
     } else {
       // No token provided, redirect to manual verification
@@ -88,124 +94,34 @@ export default function SetPasswordPage() {
           throw new Error("Email is required to complete registration")
         }
         setEmail(emailInput)
-        sessionStorage.setItem("registrationEmail", emailInput)
       }
 
-      // Get customer data from session storage
-      const customerDataStr = sessionStorage.getItem("customerData")
-      let customerData = null
+      // Find the user record by email
+      const { data: userData, error: userQueryError } = await supabaseClient
+        .from("users")
+        .select("*")
+        .eq("username", email)
+        .single()
 
-      if (customerDataStr) {
-        customerData = JSON.parse(customerDataStr)
+      if (userQueryError) {
+        throw new Error(`Error finding user account: ${userQueryError.message}`)
       }
 
-      // Create a new Supabase auth user
-      const { data: authData, error: authError } = await supabaseClient.auth.signUp({
-        email: email,
-        password: password,
-      })
-
-      if (authError) {
-        throw new Error(`Error creating user account: ${authError.message}`)
+      if (!userData) {
+        throw new Error("User account not found. Please complete registration first.")
       }
 
-      if (!authData.user) {
-        throw new Error("Failed to create user account")
-      }
+      // Update the user's password and set account status to verified
+      const { error: updateError } = await supabaseClient
+        .from("users")
+        .update({
+          passwordhash: password, // In a real app, you would hash this password
+          accountstatus: "verified",
+        })
+        .eq("username", email)
 
-      // If we have customer data, create a customer record
-      if (customerData) {
-        // Create a transaction to insert customer data
-        const { data: customerResult, error: customerError } = await supabaseClient
-          .from("customers")
-          .insert([
-            {
-              firstname: customerData.firstName,
-              lastname: customerData.lastName,
-              email: email,
-              dateofbirth: customerData.dateOfBirth,
-              gender: customerData.gender,
-              nationality: customerData.nationality,
-              identitycardnumber: customerData.identityCardNumber,
-              phonenumber: customerData.phoneNumber,
-              country: customerData.country,
-              city: customerData.city,
-              addressline: customerData.address,
-              pronoun: customerData.pronoun || "Prefer not to say",
-              contactname: `${customerData.firstName} ${customerData.lastName}`,
-            },
-          ])
-          .select("customerid")
-          .single()
-
-        if (customerError) {
-          throw new Error(`Error creating customer: ${customerError.message}`)
-        }
-
-        // Get the customer ID
-        const customerId = customerResult.customerid
-
-        // Create user record with the auth user ID
-        const { error: userError } = await supabaseClient.from("users").insert([
-          {
-            userid: authData.user.id,
-            customerid: customerId,
-            username: email,
-            pointsavailable: 0,
-            accountstatus: "active",
-            dateregistered: new Date().toISOString(),
-          },
-        ])
-
-        if (userError) {
-          throw new Error(`Error creating user: ${userError.message}`)
-        }
-      } else {
-        // Create minimal customer data
-        const { data: customerResult, error: customerError } = await supabaseClient
-          .from("customers")
-          .insert([
-            {
-              firstname: "New",
-              lastname: "User",
-              email: email,
-              dateofbirth: new Date().toISOString(),
-              gender: "prefer-not-to-say",
-              nationality: "VN",
-              identitycardnumber: "Unknown",
-              phonenumber: "Unknown",
-              country: "VN",
-              city: "Unknown",
-              addressline: "Unknown",
-              pronoun: "Prefer not to say",
-              contactname: "New User",
-            },
-          ])
-          .select("customerid")
-          .single()
-
-        if (customerError) {
-          throw new Error(`Error creating customer: ${customerError.message}`)
-        }
-
-        // Get the customer ID
-        const customerId = customerResult.customerid
-
-        // Create user record with the auth user ID
-        const { error: userError } = await supabaseClient.from("users").insert([
-          {
-            userid: authData.user.id,
-            customerid: customerId,
-            username: email,
-            pointsavailable: 0,
-            accountstatus: "active",
-            dateregistered: new Date().toISOString(),
-          },
-        ])
-
-        if (userError) {
-          throw new Error(`Error creating user: ${userError.message}`)
-        }
+      if (updateError) {
+        throw new Error(`Error updating user account: ${updateError.message}`)
       }
 
       // Success! Show success message and redirect after a delay
@@ -254,8 +170,8 @@ export default function SetPasswordPage() {
                   </Alert>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-[#f8f5f2]">
+                <div className="space-y-2 text-left">
+                  <Label htmlFor="password" className="text-[#f8f5f2] text-left">
                     Password
                   </Label>
                   <div className="relative">
@@ -281,8 +197,8 @@ export default function SetPasswordPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-[#f8f5f2]">
+                <div className="space-y-2 text-left">
+                  <Label htmlFor="confirmPassword" className="text-[#f8f5f2] text-left">
                     Confirm Password
                   </Label>
                   <div className="relative">
@@ -308,8 +224,8 @@ export default function SetPasswordPage() {
                   </div>
                 </div>
 
-                <div className="text-sm text-[#f8f5f2]">
-                  <p className="mb-2">Password must:</p>
+                <div className="text-sm text-[#f8f5f2] text-left">
+                  <p className="mb-2 text-left">Password must:</p>
                   <ul className="space-y-1">
                     <li className={`flex items-center ${validations.length ? "text-green-500" : "text-gray-400"}`}>
                       <span className="mr-2">{validations.length ? "✓" : "○"}</span>
