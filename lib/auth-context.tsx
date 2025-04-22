@@ -5,7 +5,11 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import supabaseClient from "@/lib/supabase"
-import type { User } from "@supabase/supabase-js"
+
+interface User {
+  email: string
+  customerId: string
+}
 
 interface AuthContextType {
   user: User | null
@@ -22,69 +26,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    const checkUser = async () => {
-      const {
-        data: { session },
-      } = await supabaseClient.auth.getSession()
+    // Check if user is logged in from session storage
+    const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
+    const userEmail = sessionStorage.getItem("userEmail")
+    const customerId = sessionStorage.getItem("customerId")
 
-      if (session?.user) {
-        // Check if user exists in our database and is verified
-        const { data: userCheck, error: userCheckError } = await supabaseClient
-          .from("users")
-          .select("accountstatus")
-          .eq("username", session.user.email)
-          .single()
-
-        if (!userCheckError && userCheck && userCheck.accountstatus === "verified") {
-          setUser(session.user)
-        } else {
-          // If user is not verified or doesn't exist in our database, sign them out
-          await supabaseClient.auth.signOut()
-          setUser(null)
-        }
-      } else {
-        setUser(null)
-      }
-
-      setLoading(false)
-
-      const {
-        data: { subscription },
-      } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          // Check if user exists in our database and is verified
-          const { data: userCheck, error: userCheckError } = await supabaseClient
-            .from("users")
-            .select("accountstatus")
-            .eq("username", session.user.email)
-            .single()
-
-          if (!userCheckError && userCheck && userCheck.accountstatus === "verified") {
-            setUser(session.user)
-          } else {
-            // If user is not verified or doesn't exist in our database, sign them out
-            await supabaseClient.auth.signOut()
-            setUser(null)
-          }
-        } else {
-          setUser(null)
-        }
+    if (isLoggedIn && userEmail && customerId) {
+      setUser({
+        email: userEmail,
+        customerId: customerId,
       })
-
-      return () => {
-        subscription.unsubscribe()
-      }
+    } else {
+      setUser(null)
     }
 
-    checkUser()
+    setLoading(false)
   }, [])
 
   const signIn = async (email: string, password: string) => {
     try {
-      // First check if the user exists and is verified in our database
+      // Check if the user exists and is verified in our database
       const { data: userCheck, error: userCheckError } = await supabaseClient
         .from("users")
-        .select("accountstatus")
+        .select("accountstatus, passwordhash, customerid")
         .eq("username", email)
         .single()
 
@@ -93,19 +57,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Check if the account is verified
-      if (userCheck && userCheck.accountstatus !== "verified") {
+      if (userCheck.accountstatus !== "verified") {
         throw new Error("Please verify your account before logging in")
       }
 
-      // Proceed with authentication
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
+      // Check if the password matches
+      if (userCheck.passwordhash !== password) {
+        throw new Error("Invalid email or password")
       }
+
+      // Store user info in session storage
+      sessionStorage.setItem("isLoggedIn", "true")
+      sessionStorage.setItem("userEmail", email)
+      sessionStorage.setItem("customerId", userCheck.customerid)
+
+      // Update user state
+      setUser({
+        email: email,
+        customerId: userCheck.customerid,
+      })
 
       router.push("/profile")
     } catch (error: any) {
@@ -114,7 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabaseClient.auth.signOut()
+    // Clear session storage
+    sessionStorage.removeItem("isLoggedIn")
+    sessionStorage.removeItem("userEmail")
+    sessionStorage.removeItem("customerId")
+
+    setUser(null)
     router.push("/")
   }
 

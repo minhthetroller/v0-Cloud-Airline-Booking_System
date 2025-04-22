@@ -12,7 +12,6 @@ import { Eye, EyeOff, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 import Image from "next/image"
-import { useAuth } from "@/lib/auth-context"
 import supabaseClient from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 
@@ -28,7 +27,6 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { signIn } = useAuth()
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -43,14 +41,15 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError(null)
 
     try {
-      // First check if the user exists in our database
+      // Check if the user exists in our database
       const { data: userCheck, error: userCheckError } = await supabaseClient
         .from("users")
-        .select("accountstatus, passwordhash")
+        .select("accountstatus, passwordhash, customerid")
         .eq("username", email)
         .single()
 
       if (userCheckError) {
+        console.error("User check error:", userCheckError)
         throw new Error("Invalid email or password")
       }
 
@@ -64,34 +63,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         throw new Error("Invalid email or password")
       }
 
-      // Sign in with Supabase Auth
-      const { error: authError } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password,
-      })
+      // Store user info in session storage for client-side auth
+      sessionStorage.setItem("isLoggedIn", "true")
+      sessionStorage.setItem("userEmail", email)
+      sessionStorage.setItem("customerId", userCheck.customerid)
 
-      if (authError) {
-        // If Supabase Auth fails, try to sign up the user first
-        // This handles cases where the user exists in our database but not in Auth
-        const { error: signUpError } = await supabaseClient.auth.signUp({
-          email,
-          password,
-        })
-
-        if (signUpError) {
-          throw new Error("Authentication failed. Please try again.")
-        }
-
-        // Try signing in again
-        const { error: retryError } = await supabaseClient.auth.signInWithPassword({
-          email,
-          password,
-        })
-
-        if (retryError) {
-          throw new Error("Authentication failed. Please try again.")
-        }
-      }
+      // Successfully logged in - no need to update lastlogin as the column doesn't exist
 
       // Successfully logged in
       onClose()

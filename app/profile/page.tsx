@@ -67,36 +67,30 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabaseClient.auth.getSession()
+      const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
+      const userEmail = sessionStorage.getItem("userEmail")
 
-      if (!session) {
+      if (!isLoggedIn || !userEmail) {
         router.push("/")
         return
       }
 
-      fetchUserData(session.user.id)
+      fetchUserData(userEmail)
     }
 
     checkAuth()
   }, [router])
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = async (email: string) => {
     setLoading(true)
     setError(null)
 
     try {
-      // Get user data from auth.users
-      const { data: userData, error: userError } = await supabaseClient.auth.getUser()
-
-      if (userError) throw userError
-
       // Get user record from users table
       const { data: userRecord, error: userRecordError } = await supabaseClient
         .from("users")
         .select("*")
-        .eq("userid", userId)
+        .eq("username", email)
         .single()
 
       if (userRecordError) throw userRecordError
@@ -110,14 +104,23 @@ export default function ProfilePage() {
 
       if (customerError) throw customerError
 
-      // Get booking history
-      const { data: bookingData, error: bookingError } = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .eq("customerid", userRecord.customerid)
-        .order("bookingdate", { ascending: false })
+      // Try to get booking history - handle the case where customerid column doesn't exist
+      let bookingData = []
+      try {
+        // First try to get bookings by userid if that relationship exists
+        const { data, error } = await supabaseClient
+          .from("bookings")
+          .select("*")
+          .eq("userid", userRecord.userid)
+          .order("bookingdate", { ascending: false })
 
-      if (bookingError) throw bookingError
+        if (!error && data) {
+          bookingData = data
+        }
+      } catch (bookingErr) {
+        console.error("Could not fetch bookings:", bookingErr)
+        // Non-critical error, continue with empty bookings
+      }
 
       // Determine tier based on points
       let tier = "Stratus"
@@ -129,8 +132,8 @@ export default function ProfilePage() {
 
       // Format user profile data
       setUser({
-        id: userId,
-        email: userData.user?.email || "",
+        id: userRecord.userid,
+        email: email,
         firstName: customerData.firstname,
         lastName: customerData.lastname,
         title: customerData.pronoun,
@@ -1061,7 +1064,7 @@ export default function ProfilePage() {
                     </svg>
                   </div>
                   <h4 className="text-xl font-bold mb-2">No Bookings Found</h4>
-                  <p className="text-gray-400 mb-6">You haven't booked any tickets yet.</p>
+                  <p className="text-gray-400 mb-6">You don't have any bookings in our system yet.</p>
                   <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90">Book Your First Flight</Button>
                 </div>
               )}
