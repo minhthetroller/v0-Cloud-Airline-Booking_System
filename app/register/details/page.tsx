@@ -28,8 +28,10 @@ export default function DetailsPage() {
   useEffect(() => {
     const email = sessionStorage.getItem("registrationEmail")
     const firstName = sessionStorage.getItem("registrationFirstName")
+    const lastName = sessionStorage.getItem("registrationLastName")
+    const title = sessionStorage.getItem("registrationTitle")
 
-    if (!email || !firstName) {
+    if (!email || !firstName || !lastName || !title) {
       router.push("/register")
     }
   }, [router])
@@ -66,19 +68,30 @@ export default function DetailsPage() {
       return
     }
 
-    // Store details in session storage
-    sessionStorage.setItem("registrationDateOfBirth", dateOfBirth.toISOString())
-    sessionStorage.setItem("registrationGender", gender)
-    sessionStorage.setItem("registrationNationality", nationality)
-    sessionStorage.setItem("registrationIdNumber", idNumber)
-    sessionStorage.setItem("registrationPhoneNumber", phoneNumber)
-    sessionStorage.setItem("registrationAddressLine", addressLine)
-    sessionStorage.setItem("registrationCity", city)
-    sessionStorage.setItem("registrationCountry", country)
-
     try {
-      // Send verification email using Supabase
+      // Get email and name from session storage
       const email = sessionStorage.getItem("registrationEmail") || ""
+      const firstName = sessionStorage.getItem("registrationFirstName") || ""
+      const lastName = sessionStorage.getItem("registrationLastName") || ""
+      const title = sessionStorage.getItem("registrationTitle") || ""
+
+      // Create customer data object
+      const customerData = {
+        firstName,
+        lastName,
+        pronoun: title,
+        dateOfBirth: dateOfBirth.toISOString(),
+        gender,
+        nationality,
+        identityCardNumber: idNumber,
+        phoneNumber,
+        address: addressLine,
+        city,
+        country,
+      }
+
+      // Store customer data in session storage
+      sessionStorage.setItem("customerData", JSON.stringify(customerData))
 
       // Generate a unique token for verification
       const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
@@ -86,14 +99,11 @@ export default function DetailsPage() {
       // Store token in session storage
       sessionStorage.setItem("registrationToken", token)
 
-      // In a real app, you would send an email with a link to /register/set-password?token=TOKEN
-      // For this demo, we'll simulate the email sending and proceed to the confirmation page
-
       // Navigate to the confirmation page
       router.push("/register/confirmation")
     } catch (err: any) {
-      console.error("Error sending verification email:", err)
-      setError(err.message || "Failed to send verification email. Please try again.")
+      console.error("Error saving details:", err)
+      setError(err.message || "Failed to save details. Please try again.")
     }
   }
 

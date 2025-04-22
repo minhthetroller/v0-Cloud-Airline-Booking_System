@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
-import { sendVerificationEmail } from "@/lib/email"
 
 export default function ConfirmationPage() {
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [updateSuccess, setUpdateSuccess] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -22,28 +23,51 @@ export default function ConfirmationPage() {
       return
     }
 
+    // Check if customer data exists
+    const customerDataStr = sessionStorage.getItem("customerData")
+    if (!customerDataStr) {
+      router.push("/register/details")
+      return
+    }
+
     setEmail(storedEmail)
 
     // Send verification email when component mounts
     const sendEmail = async () => {
       try {
+        setSending(true)
         const token = sessionStorage.getItem("registrationToken")
-        if (token) {
-          await sendVerificationEmail(storedEmail, token)
+
+        if (!token) {
+          throw new Error("Verification token not found")
         }
+
+        // Send the verification email
+        const response = await fetch("/api/send-email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: storedEmail, token }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to send verification email")
+        }
+
+        // Email sent successfully
       } catch (err: any) {
         console.error("Error sending verification email:", err)
         setError(err.message || "Failed to send verification email. Please try again.")
+      } finally {
+        setSending(false)
       }
     }
 
     sendEmail()
   }, [router])
 
-  // Add state for success message
-  const [updateSuccess, setUpdateSuccess] = useState(false)
-
-  // Update the handleResend function to better handle errors
   const handleResend = async () => {
     setLoading(true)
     setError(null)
@@ -54,7 +78,19 @@ export default function ConfirmationPage() {
         throw new Error("Verification token not found")
       }
 
-      await sendVerificationEmail(email, token)
+      // Send the verification email
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, token }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to send verification email")
+      }
 
       // Show success message
       setUpdateSuccess(true)
@@ -145,7 +181,7 @@ export default function ConfirmationPage() {
                   variant="link"
                   className="text-[#9b6a4f] hover:underline text-sm"
                 >
-                  Enter verification token manually
+                  Skip email verification (for testing)
                 </Button>
               </div>
             </div>

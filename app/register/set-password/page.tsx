@@ -1,136 +1,156 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Eye, EyeOff, Check, X } from "lucide-react"
-import supabaseClient from "@/lib/supabase"
+import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
+import Image from "next/image"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const supabase = createClientComponentClient()
 
   // Password validation states
-  const [hasMinLength, setHasMinLength] = useState(false)
-  const [hasUppercase, setHasUppercase] = useState(false)
-  const [hasLowercase, setHasLowercase] = useState(false)
-  const [hasNumber, setHasNumber] = useState(false)
-  const [hasSpecialChar, setHasSpecialChar] = useState(false)
-  const [passwordsMatch, setPasswordsMatch] = useState(false)
+  const [validations, setValidations] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false,
+    match: false,
+  })
 
-  // Check token from URL
   useEffect(() => {
-    const token = searchParams.get("token")
+    // Get token from URL query parameters
+    const urlToken = searchParams.get("token")
+    if (urlToken) {
+      setToken(urlToken)
 
-    if (!token) {
-      // Try to get token from session storage if not in URL
-      const storedToken = sessionStorage.getItem("registrationToken")
-
-      if (!storedToken) {
-        setError("Invalid or expired verification link. Please request a new one.")
+      // Try to get email from session storage
+      const storedEmail = sessionStorage.getItem("registrationEmail")
+      if (storedEmail) {
+        setEmail(storedEmail)
+      } else {
+        // If no email in session storage, redirect to registration
+        router.push("/register")
       }
+    } else {
+      // No token provided, redirect to registration
+      router.push("/register")
     }
-  }, [searchParams])
+  }, [searchParams, router])
 
   // Validate password as user types
   useEffect(() => {
-    setHasMinLength(password.length >= 8)
-    setHasUppercase(/[A-Z]/.test(password))
-    setHasLowercase(/[a-z]/.test(password))
-    setHasNumber(/[0-9]/.test(password))
-    setHasSpecialChar(/[!@#$%^&*(),.?":{}|<>]/.test(password))
-    setPasswordsMatch(password === confirmPassword && password !== "")
+    setValidations({
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
+      match: password === confirmPassword && password !== "",
+    })
   }, [password, confirmPassword])
 
-  const isPasswordValid = () => {
-    return hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecialChar && passwordsMatch
-  }
-
-  const handleSubmit = async () => {
-    if (!isPasswordValid()) {
-      setError("Please ensure your password meets all requirements")
-      return
-    }
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
-      // Get token from URL or session storage
-      const token = searchParams.get("token") || sessionStorage.getItem("registrationToken")
-
-      if (!token) {
-        throw new Error("Verification token not found")
+      // Validate passwords match
+      if (password !== confirmPassword) {
+        throw new Error("Passwords do not match")
       }
 
-      // Get registration data from session storage
-      const email = sessionStorage.getItem("registrationEmail") || ""
-      const title = sessionStorage.getItem("registrationTitle") || ""
-      const firstName = sessionStorage.getItem("registrationFirstName") || ""
-      const lastName = sessionStorage.getItem("registrationLastName") || ""
-      const dateOfBirth = sessionStorage.getItem("registrationDateOfBirth") || ""
-      const gender = sessionStorage.getItem("registrationGender") || ""
-      const nationality = sessionStorage.getItem("registrationNationality") || ""
-      const idNumber = sessionStorage.getItem("registrationIdNumber") || ""
-      const phoneNumber = sessionStorage.getItem("registrationPhoneNumber") || ""
-      const addressLine = sessionStorage.getItem("registrationAddressLine") || ""
-      const city = sessionStorage.getItem("registrationCity") || ""
-      const country = sessionStorage.getItem("registrationCountry") || ""
+      // Validate password meets requirements
+      if (!Object.values(validations).every((valid) => valid)) {
+        throw new Error("Password does not meet all requirements")
+      }
 
-      // Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabaseClient.auth.signUp({
-        email,
-        password,
+      if (!email) {
+        throw new Error("Email not found. Please restart the registration process.")
+      }
+
+      // Get customer data from session storage
+      const customerDataStr = sessionStorage.getItem("customerData")
+      if (!customerDataStr) {
+        throw new Error("Customer data not found. Please restart the registration process.")
+      }
+
+      const customerData = JSON.parse(customerDataStr)
+
+      // First, create the auth user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email,
+        password: password,
         options: {
           data: {
-            title,
-            first_name: firstName,
-            last_name: lastName,
+            first_name: customerData.firstName,
+            last_name: customerData.lastName,
+            title: customerData.pronoun,
           },
         },
       })
 
-      if (authError) throw authError
+      if (authError) {
+        throw new Error(`Error creating user account: ${authError.message}`)
+      }
 
-      // Create customer record in customers table
-      const { data: customerData, error: customerError } = await supabaseClient
+      if (!authData.user) {
+        throw new Error("Failed to create user account")
+      }
+
+      // Create a transaction to insert customer data
+      const { data: customerResult, error: customerError } = await supabase
         .from("customers")
         .insert([
           {
-            pronoun: title,
-            firstname: firstName,
-            lastname: lastName,
-            dateofbirth: new Date(dateOfBirth),
-            gender,
-            nationality,
-            identitycardnumber: idNumber,
-            contactname: `${firstName} ${lastName}`,
-            phonenumber: phoneNumber,
-            email,
-            addressline: addressLine,
-            city,
-            country,
+            firstname: customerData.firstName,
+            lastname: customerData.lastName,
+            email: email,
+            dateofbirth: customerData.dateOfBirth,
+            gender: customerData.gender,
+            nationality: customerData.nationality,
+            identitycardnumber: customerData.identityCardNumber,
+            phonenumber: customerData.phoneNumber,
+            country: customerData.country,
+            city: customerData.city,
+            addressline: customerData.address,
+            pronoun: customerData.pronoun || "Prefer not to say",
+            contactname: `${customerData.firstName} ${customerData.lastName}`,
           },
         ])
-        .select()
+        .select("customerid")
+        .single()
 
-      if (customerError) throw customerError
+      if (customerError) {
+        throw new Error(`Error creating customer: ${customerError.message}`)
+      }
 
       // Get the customer ID
-      const customerId = customerData[0].customerid
+      const customerId = customerResult.customerid
 
-      // Update user record in users table
-      const { error: userError } = await supabaseClient.from("users").insert([
+      // Create user record with the auth user ID
+      const { error: userError } = await supabase.from("users").insert([
         {
+          userid: authData.user.id,
           customerid: customerId,
           username: email,
           pointsavailable: 0,
@@ -139,16 +159,24 @@ export default function SetPasswordPage() {
         },
       ])
 
-      if (userError) throw userError
+      if (userError) {
+        throw new Error(`Error creating user: ${userError.message}`)
+      }
 
-      // Clear session storage
-      sessionStorage.clear()
+      // Success! Show success message and redirect after a delay
+      setSuccess(true)
+      setTimeout(() => {
+        // Clear session storage
+        sessionStorage.removeItem("registrationEmail")
+        sessionStorage.removeItem("registrationToken")
+        sessionStorage.removeItem("customerData")
 
-      // Redirect to success page
-      router.push("/register/success")
+        // Redirect to success page
+        router.push("/register/success")
+      }, 2000)
     } catch (err: any) {
-      console.error("Error completing registration:", err)
-      setError(err.message || "Failed to complete registration. Please try again.")
+      console.error("Error setting password:", err)
+      setError(err.message || "Failed to set password. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -156,122 +184,125 @@ export default function SetPasswordPage() {
 
   return (
     <div className="min-h-screen bg-[#0f2d3c] flex flex-col items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full bg-[#f8f5f2] rounded-lg p-8">
-        <h1 className="text-2xl font-bold text-[#0f2d3c] mb-6 text-center">Set Your Password</h1>
+      <div className="max-w-md w-full bg-[#0f2d3c] rounded-lg p-8 text-center">
+        <div className="mb-8 flex justify-center">
+          <Image src="/logo.png" alt="Cloud Airline Logo" width={180} height={60} />
+        </div>
 
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+        <h1 className="text-3xl font-bold text-[#f8f5f2] mb-6">Set Your Password</h1>
 
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="password" className="text-[#0f2d3c] mb-2 block">
-              Password
-            </Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="border-gray-300 pr-10"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-3 text-gray-500"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+        <div className="bg-[#1a3a4a] rounded-lg p-8 mb-8">
+          {success ? (
+            <div className="bg-green-500/10 text-green-500 border border-green-500 rounded-md p-4 mb-4">
+              <p className="flex items-center">
+                <Check className="h-5 w-5 mr-2" />
+                Password set successfully! Redirecting...
+              </p>
             </div>
-          </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-6">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
 
-          <div>
-            <Label htmlFor="confirmPassword" className="text-[#0f2d3c] mb-2 block">
-              Confirm Password
-            </Label>
-            <div className="relative">
-              <Input
-                id="confirmPassword"
-                type={showConfirmPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="border-gray-300 pr-10"
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-3 text-gray-500"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-[#f8f5f2]">
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5 text-gray-400" />
+                      ) : (
+                        <Eye className="h-5 w-5 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-          <div className="bg-gray-100 p-4 rounded-md">
-            <h3 className="font-medium text-[#0f2d3c] mb-2">Password Requirements:</h3>
-            <ul className="space-y-1">
-              <li className="flex items-center text-sm">
-                {hasMinLength ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                At least 8 characters
-              </li>
-              <li className="flex items-center text-sm">
-                {hasUppercase ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                At least one uppercase letter
-              </li>
-              <li className="flex items-center text-sm">
-                {hasLowercase ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                At least one lowercase letter
-              </li>
-              <li className="flex items-center text-sm">
-                {hasNumber ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                At least one number
-              </li>
-              <li className="flex items-center text-sm">
-                {hasSpecialChar ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                At least one special character
-              </li>
-              <li className="flex items-center text-sm">
-                {passwordsMatch ? (
-                  <Check className="h-4 w-4 text-green-500 mr-2" />
-                ) : (
-                  <X className="h-4 w-4 text-red-500 mr-2" />
-                )}
-                Passwords match
-              </li>
-            </ul>
-          </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword" className="text-[#f8f5f2]">
+                    Confirm Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-5 w-5 text-gray-400" />
+                      ) : (
+                        <Eye className="h-5 w-5 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-          <Button
-            onClick={handleSubmit}
-            disabled={loading || !isPasswordValid()}
-            className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white"
-          >
-            {loading ? "Creating Account..." : "Create Account"}
-          </Button>
+                <div className="text-sm text-[#f8f5f2]">
+                  <p className="mb-2">Password must:</p>
+                  <ul className="space-y-1">
+                    <li className={`flex items-center ${validations.length ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.length ? "✓" : "○"}</span>
+                      Be at least 8 characters long
+                    </li>
+                    <li className={`flex items-center ${validations.uppercase ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.uppercase ? "✓" : "○"}</span>
+                      Include at least one uppercase letter
+                    </li>
+                    <li className={`flex items-center ${validations.lowercase ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.lowercase ? "✓" : "○"}</span>
+                      Include at least one lowercase letter
+                    </li>
+                    <li className={`flex items-center ${validations.number ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.number ? "✓" : "○"}</span>
+                      Include at least one number
+                    </li>
+                    <li className={`flex items-center ${validations.special ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.special ? "✓" : "○"}</span>
+                      Include at least one special character
+                    </li>
+                    <li className={`flex items-center ${validations.match ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.match ? "✓" : "○"}</span>
+                      Passwords match
+                    </li>
+                  </ul>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white"
+                  disabled={loading || !Object.values(validations).every((valid) => valid)}
+                >
+                  {loading ? "Setting Password..." : "Set Password"}
+                </Button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
