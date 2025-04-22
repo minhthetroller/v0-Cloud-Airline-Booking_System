@@ -26,13 +26,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const {
         data: { session },
       } = await supabaseClient.auth.getSession()
-      setUser(session?.user || null)
+
+      if (session?.user) {
+        // Check if user exists in our database and is verified
+        const { data: userCheck, error: userCheckError } = await supabaseClient
+          .from("users")
+          .select("accountstatus")
+          .eq("username", session.user.email)
+          .single()
+
+        if (!userCheckError && userCheck && userCheck.accountstatus === "verified") {
+          setUser(session.user)
+        } else {
+          // If user is not verified or doesn't exist in our database, sign them out
+          await supabaseClient.auth.signOut()
+          setUser(null)
+        }
+      } else {
+        setUser(null)
+      }
+
       setLoading(false)
 
       const {
         data: { subscription },
-      } = supabaseClient.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user || null)
+      } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          // Check if user exists in our database and is verified
+          const { data: userCheck, error: userCheckError } = await supabaseClient
+            .from("users")
+            .select("accountstatus")
+            .eq("username", session.user.email)
+            .single()
+
+          if (!userCheckError && userCheck && userCheck.accountstatus === "verified") {
+            setUser(session.user)
+          } else {
+            // If user is not verified or doesn't exist in our database, sign them out
+            await supabaseClient.auth.signOut()
+            setUser(null)
+          }
+        } else {
+          setUser(null)
+        }
       })
 
       return () => {
@@ -44,16 +80,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      // First check if the user exists and is verified in our database
+      const { data: userCheck, error: userCheckError } = await supabaseClient
+        .from("users")
+        .select("accountstatus")
+        .eq("username", email)
+        .single()
 
-    if (error) {
+      if (userCheckError) {
+        throw new Error("Invalid email or password")
+      }
+
+      // Check if the account is verified
+      if (userCheck && userCheck.accountstatus !== "verified") {
+        throw new Error("Please verify your account before logging in")
+      }
+
+      // Proceed with authentication
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      router.push("/profile")
+    } catch (error: any) {
       throw error
     }
-
-    router.push("/profile")
   }
 
   const signOut = async () => {

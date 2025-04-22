@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
+import supabaseClient from "@/lib/supabase"
+import { useRouter } from "next/navigation"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -27,6 +29,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { signIn } = useAuth()
+  const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,8 +43,59 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError(null)
 
     try {
-      await signIn(email, password)
+      // First check if the user exists in our database
+      const { data: userCheck, error: userCheckError } = await supabaseClient
+        .from("users")
+        .select("accountstatus, passwordhash")
+        .eq("username", email)
+        .single()
+
+      if (userCheckError) {
+        throw new Error("Invalid email or password")
+      }
+
+      // Check if the account is verified
+      if (userCheck.accountstatus !== "verified") {
+        throw new Error("Please verify your account before logging in")
+      }
+
+      // Check if the password matches
+      if (userCheck.passwordhash !== password) {
+        throw new Error("Invalid email or password")
+      }
+
+      // Sign in with Supabase Auth
+      const { error: authError } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (authError) {
+        // If Supabase Auth fails, try to sign up the user first
+        // This handles cases where the user exists in our database but not in Auth
+        const { error: signUpError } = await supabaseClient.auth.signUp({
+          email,
+          password,
+        })
+
+        if (signUpError) {
+          throw new Error("Authentication failed. Please try again.")
+        }
+
+        // Try signing in again
+        const { error: retryError } = await supabaseClient.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (retryError) {
+          throw new Error("Authentication failed. Please try again.")
+        }
+      }
+
+      // Successfully logged in
       onClose()
+      router.push("/profile")
     } catch (err: any) {
       console.error("Login error:", err)
       setError(err.message || "Failed to sign in. Please check your credentials.")
