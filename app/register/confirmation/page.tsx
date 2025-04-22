@@ -7,7 +7,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import Image from "next/image"
 import { sendVerificationEmail } from "@/lib/email"
-import Link from "next/link"
 
 export default function ConfirmationPage() {
   const [email, setEmail] = useState("")
@@ -72,6 +71,16 @@ export default function ConfirmationPage() {
     }
   }
 
+  // Function to handle manual verification
+  const handleManualVerification = () => {
+    const token = sessionStorage.getItem("registrationToken")
+    if (token) {
+      router.push(`/register/set-password?token=${token}`)
+    } else {
+      setError("Verification token not found. Please try again.")
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#0f2d3c] flex flex-col items-center justify-center py-12 px-4">
       <div className="max-w-md w-full bg-[#0f2d3c] rounded-lg p-8 text-center">
@@ -91,7 +100,7 @@ export default function ConfirmationPage() {
             <p className="text-[#f8f5f2] text-sm mb-6 text-left">
               The confirmation letter will be sent to your email address within five minutes. Please click the link
               attached as soon as possible to complete the password setting. If you have any questions. Please contact
-              the STARLUX Customer Service Center.
+              the Cloud Airline Customer Service Center.
             </p>
 
             {error && (
@@ -131,9 +140,13 @@ export default function ConfirmationPage() {
                 {loading ? "Sending..." : "Resend"}
               </Button>
               <div className="mt-2">
-                <Link href="/register/manual-verification" className="text-[#9b6a4f] hover:underline text-sm">
+                <Button
+                  onClick={handleManualVerification}
+                  variant="link"
+                  className="text-[#9b6a4f] hover:underline text-sm"
+                >
                   Enter verification token manually
-                </Link>
+                </Button>
               </div>
             </div>
           </div>

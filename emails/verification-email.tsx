@@ -29,12 +29,12 @@ export const VerificationEmail = ({ verificationUrl, email }: VerificationEmailP
             src={`${process.env.NEXT_PUBLIC_APP_URL}/logo.png`}
             width="180"
             height="60"
-            alt="STARLUX Airlines"
+            alt="Cloud Airline"
             style={logo}
           />
           <Heading style={heading}>Welcome to COSMILE</Heading>
           <Text style={paragraph}>
-            Thank you for joining the premium frequent flyer program of STARLUX Airlines. To complete your registration,
+            Thank you for joining the premium frequent flyer program of Cloud Airline. To complete your registration,
             please verify your email address and set your password.
           </Text>
           <Section style={buttonContainer}>
@@ -47,7 +47,7 @@ export const VerificationEmail = ({ verificationUrl, email }: VerificationEmailP
           </Text>
           <Hr style={hr} />
           <Text style={footer}>
-            © {new Date().getFullYear()} STARLUX Airlines. All rights reserved.
+            © {new Date().getFullYear()} Cloud Airline. All rights reserved.
             <br />
             <Link href="https://starluxairlines.com/privacy" style={link}>
               Privacy Policy

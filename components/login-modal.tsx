@@ -52,7 +52,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
         <div className="flex flex-col md:flex-row">
           {/* Left side with logo and text */}
           <div className="bg-[#f8f5f2] p-8 flex flex-col items-center justify-center text-center md:w-2/5">
