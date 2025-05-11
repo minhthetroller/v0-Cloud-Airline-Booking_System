@@ -1,18 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar } from "@/components/ui/calendar"
+import { useRouter } from "next/navigation"
+import { format } from "date-fns"
+import { CalendarIcon, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { CalendarIcon, Users, AlertCircle } from "lucide-react"
-import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import AirportSelector from "@/components/airport-selector"
 import PassengerModal from "@/components/passenger-modal"
-import { useRouter, useSearchParams } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertCircle } from "lucide-react"
 
 export default function BookingForm() {
   const [tripType, setTripType] = useState("round-trip")
@@ -29,6 +30,9 @@ export default function BookingForm() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const router = useRouter()
+
   const getTotalPassengers = () => {
     return passengerDetails.adults + passengerDetails.children + passengerDetails.infants
   }
@@ -41,9 +45,6 @@ export default function BookingForm() {
       .join(" ")
     return `${total} Passenger${total !== 1 ? "s" : ""}, ${classDisplay}`
   }
-
-  const router = useRouter()
-  const searchParams = useSearchParams()
 
   const handleSearch = async () => {
     if (!fromLocation || !toLocation || !departDate) {
