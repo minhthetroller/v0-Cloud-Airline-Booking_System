@@ -1,23 +1,215 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
-import { ChevronRight, Info } from "lucide-react"
+import { Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import supabaseClient from "@/lib/supabase"
+import { Skeleton } from "@/components/ui/skeleton"
+
+interface TicketClass {
+  classid: number
+  classname: string
+  description: string
+  cabintype: string
+  bookingcodeinfo: string
+  seatselectioninfo: string
+  checkedbagageinfo: string
+  mileagemultiplier: number
+  upgraderules: string
+  reissuefeedefaultamount: number
+  reissuefeedefaultcurr: string
+  refundfeedefaultamount: number
+  refundfeedefaultcurr: string
+}
 
 interface PriceDetailsProps {
   flightId: string
-  selectedClass: "economy" | "business" | null
+  selectedClass: string
   onClose: () => void
   onSelect: (fareType: string, price: number) => void
+  availabilityCount?: number
 }
 
-export default function PriceDetails({ flightId, selectedClass, onClose, onSelect }: PriceDetailsProps) {
+export default function PriceDetails({
+  flightId,
+  selectedClass,
+  onClose,
+  onSelect,
+  availabilityCount = 0,
+}: PriceDetailsProps) {
   const [selectedFare, setSelectedFare] = useState<string | null>(null)
+  const [fareOptions, setFareOptions] = useState<Array<{ type: string; price: number | null; availability: number }>>(
+    [],
+  )
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [ticketClassDetails, setTicketClassDetails] = useState<Record<number, TicketClass>>({})
+  const [flightDetails, setFlightDetails] = useState<{ travelmiles: number } | null>(null)
+
+  // Fetch flight details to get travel miles
+  useEffect(() => {
+    const fetchFlightDetails = async () => {
+      try {
+        const { data, error } = await supabaseClient
+          .from("flights")
+          .select("travelmiles")
+          .eq("flightid", flightId)
+          .single()
+
+        if (error) throw error
+        setFlightDetails(data)
+      } catch (err) {
+        console.error("Error fetching flight details:", err)
+        // Set default travel miles if not available
+        setFlightDetails({ travelmiles: 1200 })
+      }
+    }
+
+    fetchFlightDetails()
+  }, [flightId])
+
+  // Fetch ticket class details
+  useEffect(() => {
+    const fetchTicketClasses = async () => {
+      try {
+        const { data, error } = await supabaseClient.from("ticketclasses").select("*")
+
+        if (error) throw error
+
+        const classDetails: Record<number, TicketClass> = {}
+        data.forEach((ticketClass: TicketClass) => {
+          classDetails[ticketClass.classid] = ticketClass
+        })
+
+        setTicketClassDetails(classDetails)
+      } catch (err) {
+        console.error("Error fetching ticket classes:", err)
+      }
+    }
+
+    fetchTicketClasses()
+  }, [])
+
+  useEffect(() => {
+    const fetchPrices = async () => {
+      if (!selectedClass || !flightId) return
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        // Define default options based on selected class
+        let defaultOptions = []
+
+        if (selectedClass === "economy") {
+          defaultOptions = [
+            { type: "Economy Saver", price: null, availability: 0, classId: 1 },
+            { type: "Economy Flex", price: null, availability: 0, classId: 2 },
+            { type: "Premium Economy", price: null, availability: 0, classId: 3 },
+          ]
+        } else if (selectedClass === "first-class") {
+          defaultOptions = [
+            { type: "Business", price: null, availability: 0, classId: 4 },
+            { type: "First Class", price: null, availability: 0, classId: 5 },
+          ]
+        }
+
+        // Map selected class to appropriate class IDs
+        let classIds: number[] = []
+
+        if (selectedClass === "economy") {
+          // Economy includes Economy Saver, Economy Flex, Premium Economy
+          classIds = [1, 2, 3]
+        } else if (selectedClass === "first-class") {
+          // First Class includes First Class and Business
+          classIds = [4, 5]
+        }
+
+        // Fetch prices for this flight and selected classes
+        const { data: priceData, error: priceError } = await supabaseClient
+          .from("flightprices")
+          .select("price, classid, availabilitycount")
+          .eq("flightid", flightId)
+          .in("classid", classIds)
+
+        if (priceError) throw new Error(priceError.message)
+
+        // Create a map of the fetched prices by class ID
+        const fetchedPrices: Record<number, { price: number; availability: number }> = {}
+
+        if (priceData && priceData.length > 0) {
+          priceData.forEach((item) => {
+            fetchedPrices[item.classid] = {
+              price: item.price,
+              availability: item.availabilitycount,
+            }
+          })
+        }
+
+        // Update default options with fetched data where available
+        const updatedOptions = defaultOptions.map((option) => {
+          const classId = option.classId
+          const fetchedData = fetchedPrices[classId]
+
+          return {
+            type: option.type,
+            price: fetchedData ? fetchedData.price : null,
+            availability: fetchedData ? fetchedData.availability : 0,
+          }
+        })
+
+        setFareOptions(updatedOptions)
+      } catch (err: any) {
+        console.error("Error fetching prices:", err)
+        setError(err.message)
+
+        // Fallback to default values with null prices
+        let defaultOptions = []
+
+        if (selectedClass === "economy") {
+          defaultOptions = [
+            { type: "Economy Saver", price: null, availability: 0 },
+            { type: "Economy Flex", price: null, availability: 0 },
+            { type: "Premium Economy", price: null, availability: 0 },
+          ]
+        } else if (selectedClass === "first-class") {
+          defaultOptions = [
+            { type: "Business", price: null, availability: 0 },
+            { type: "First Class", price: null, availability: 0 },
+          ]
+        }
+
+        setFareOptions(defaultOptions)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPrices()
+  }, [flightId, selectedClass, ticketClassDetails])
+
+  const getClassId = (fareType: string) => {
+    switch (fareType) {
+      case "Economy Saver":
+        return 1
+      case "Economy Flex":
+        return 2
+      case "Premium Economy":
+        return 3
+      case "Business":
+        return 4
+      case "First Class":
+        return 5
+      default:
+        return 1
+    }
+  }
 
   if (!selectedClass) return null
 
   const isEconomy = selectedClass === "economy"
+  const isFirstClass = selectedClass === "first-class"
 
   // Get destination image based on route (in a real app, this would be dynamic)
   const destinationImage = {
@@ -25,26 +217,100 @@ export default function PriceDetails({ flightId, selectedClass, onClose, onSelec
     alt: "Los Angeles",
   }
 
-  // Fare options based on selected class
-  const fareOptions = isEconomy
-    ? [
-        { type: "Basic", price: 11473000 },
-        { type: "Full", price: 18124000 },
-      ]
-    : [{ type: "Business", price: 28373000 }]
-
   const handleSelectFare = (type: string, price: number) => {
     setSelectedFare(type)
     onSelect(type, price)
   }
 
   // Format currency
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null) return "Not Available"
     return new Intl.NumberFormat("vi-VN").format(amount)
   }
 
-  // Darker version of the description color for prices
-  const priceColor = "#8a6a56" // Darker than #aa846e
+  // Calculate mileage accrual
+  const calculateMileageAccrual = (fareType: string) => {
+    const classId = getClassId(fareType)
+    const mileageMultiplier = ticketClassDetails[classId]?.mileagemultiplier || 1
+    const travelMiles = flightDetails?.travelmiles || 1200
+
+    return Math.round(travelMiles * mileageMultiplier)
+  }
+
+  // Get booking code info
+  const getBookingCodeInfo = (fareType: string) => {
+    const classId = getClassId(fareType)
+    return (
+      ticketClassDetails[classId]?.bookingcodeinfo ||
+      (fareType === "Economy Saver"
+        ? "HAN-TPE: Economy(L)\nTPE-KIX: Economy(L)"
+        : fareType === "Economy Flex"
+          ? "HAN-TPE: Economy(Y)\nTPE-KIX: Economy(Y)"
+          : fareType === "Premium Economy"
+            ? "HAN-TPE: Premium Economy(W)\nTPE-KIX: Premium Economy(W)"
+            : fareType === "Business"
+              ? "HAN-TPE: Business(H)\nTPE-KIX: Business(H)"
+              : "HAN-TPE: First(F)\nTPE-KIX: First(F)")
+    )
+  }
+
+  // Get seat selection info
+  const getSeatSelectionInfo = (fareType: string) => {
+    const classId = getClassId(fareType)
+    return (
+      ticketClassDetails[classId]?.seatselectioninfo ||
+      (fareType === "Economy Saver"
+        ? "Standard Seats Only"
+        : fareType === "Economy Flex"
+          ? "Complimentary For Forward And Standard Seats"
+          : fareType === "Premium Economy"
+            ? "Complimentary Premium Economy Seats"
+            : "Complimentary Premium Seats")
+    )
+  }
+
+  // Get checked baggage info
+  const getCheckedBaggageInfo = (fareType: string) => {
+    const classId = getClassId(fareType)
+    return (
+      ticketClassDetails[classId]?.checkedbagageinfo ||
+      (fareType === "Economy Saver"
+        ? "First Piece: Free (20kg)\nSecond Piece: Paid\nEach Piece 20 Kg (44 Lbs)"
+        : fareType === "Economy Flex"
+          ? "First Piece: Free\nSecond Piece: Free\nEach Piece 23 Kg (50 Lbs)"
+          : fareType === "Premium Economy"
+            ? "First Piece: Free\nSecond Piece: Free\nEach Piece 25 Kg (55 Lbs)"
+            : "First Piece: Free\nSecond Piece: Free\nEach Piece 32 Kg (70 Lbs)")
+    )
+  }
+
+  // Get upgrade rules
+  const getUpgradeRules = (fareType: string) => {
+    const classId = getClassId(fareType)
+    return ticketClassDetails[classId]?.upgraderules || (fareType === "Economy Saver" ? "Not Applicable" : "Applicable")
+  }
+
+  // Get reissue fee
+  const getReissueFee = (fareType: string) => {
+    const classId = getClassId(fareType)
+    const amount =
+      ticketClassDetails[classId]?.reissuefeedefaultamount ||
+      (fareType === "Economy Saver" ? 50 : fareType === "Economy Flex" ? 30 : 0)
+    const currency = ticketClassDetails[classId]?.reissuefeedefaultcurr || "USD"
+
+    return amount === 0 ? "Free" : `${currency} ${amount}`
+  }
+
+  // Get refund fee
+  const getRefundFee = (fareType: string) => {
+    const classId = getClassId(fareType)
+    const amount =
+      ticketClassDetails[classId]?.refundfeedefaultamount ||
+      (fareType === "Economy Saver" ? 100 : fareType === "Economy Flex" ? 75 : 50)
+    const currency = ticketClassDetails[classId]?.refundfeedefaultcurr || "USD"
+
+    return `${currency} ${amount}`
+  }
 
   return (
     <div className="w-full overflow-hidden transition-all duration-300 bg-[#f7e9e0]">
@@ -66,107 +332,125 @@ export default function PriceDetails({ flightId, selectedClass, onClose, onSelec
           {/* Fare options */}
           <div className="flex flex-1 flex-wrap gap-4">
             <div className="flex w-full items-center justify-between pb-2">
-              <h2 className="text-xl font-bold text-[#0f2d3c]">{isEconomy ? "Economy Options" : "Business Options"}</h2>
+              <div>
+                <h2 className="text-xl font-bold text-[#0f2d3c]">
+                  {isEconomy ? "Economy Options" : isFirstClass ? "Premium Options" : "Fare Options"}
+                </h2>
+                <p className="text-sm text-green-600">{availabilityCount} seats available</p>
+              </div>
               <div className="text-right">
                 <span className="text-sm text-[#aa846e]">Product comparison</span>
                 <Info className="ml-2 inline-block h-5 w-5 cursor-pointer text-[#aa846e]" />
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
-              {/* Fare options */}
-              {fareOptions.map((fare) => (
-                <div key={fare.type} className="rounded-lg bg-[#f5f0ea] p-4">
-                  <div className="mb-2 rounded bg-[#0f2d3c] px-2 py-1 text-center text-sm font-medium text-white">
-                    {fare.type}
-                  </div>
-                  <div className="mb-4 text-center text-xl font-bold text-[#8a6a56]">
-                    VND {formatCurrency(fare.price)}
-                  </div>
-                  <Button
-                    className="w-full bg-[#fef7f1] text-[#0f2d3c] border-2 border-[#0f2d3c] hover:bg-[#fef7f1]/90"
-                    onClick={() => handleSelectFare(fare.type, fare.price)}
-                  >
-                    Select
-                  </Button>
-
-                  <div className="mt-4 space-y-4 text-sm">
-                    <div>
-                      <div className="font-medium text-[#0f2d3c]">Booking Class</div>
-                      <div className="text-[#aa846e]">HAN-TPE: Economy{isEconomy ? "(L)" : "(H)"}</div>
-                      <div className="text-[#aa846e]">TPE-KIX: Economy{isEconomy ? "(L)" : "(H)"}</div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center font-medium text-[#0f2d3c]">
-                        Seat Selection <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
-                      </div>
-                      <div className="text-[#aa846e]">Complimentary For Forward And Standard Seats</div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center font-medium text-[#0f2d3c]">
-                        Checked Baggage <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
-                      </div>
-                      <div className="text-[#aa846e]">First Piece: Free</div>
-                      <div className="text-[#aa846e]">Second Piece: Free</div>
-                      <div className="text-[#aa846e]">Each Piece 23 Kg (50 Lbs)</div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center font-medium text-[#0f2d3c]">
-                        COSMILE Mileage Accrual <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
-                      </div>
-                      <div className="text-[#aa846e]">{isEconomy ? "1668" : "2086"}</div>
-                    </div>
-
-                    <div>
-                      <div className="font-medium text-[#0f2d3c]">COSMILE Upgrade Award</div>
-                      <div className="text-[#aa846e]">Applicable</div>
-                    </div>
-
-                    <div>
-                      <div className="font-medium text-[#0f2d3c]">Reissue Fee(Each Time)</div>
-                      <div className="text-[#aa846e]">{isEconomy ? "USD 30" : "Free"}</div>
-                    </div>
-
-                    <div>
-                      <div className="font-medium text-[#0f2d3c]">Refund Fee</div>
-                      <div className="text-[#aa846e]">{isEconomy ? "USD 100" : "USD 50"}</div>
+            {loading ? (
+              <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-lg bg-[#f5f0ea] p-4">
+                    <Skeleton className="h-6 w-24 mb-2 bg-gray-300" />
+                    <Skeleton className="h-8 w-32 mb-4 bg-gray-300" />
+                    <Skeleton className="h-10 w-full mb-4 bg-gray-300" />
+                    <div className="space-y-4">
+                      {[1, 2, 3, 4, 5].map((j) => (
+                        <div key={j}>
+                          <Skeleton className="h-4 w-32 mb-1 bg-gray-300" />
+                          <Skeleton className="h-4 w-full bg-gray-300" />
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {/* Business class option for economy selection */}
-              {isEconomy && (
-                <div className="rounded-lg bg-[#f5f0ea] p-4 flex flex-col justify-between">
-                  <div>
-                    <div className="relative aspect-video overflow-hidden rounded-lg mb-4">
-                      <Image
-                        src="/placeholder.svg?height=200&width=300"
-                        alt="Business Class Seat"
-                        width={300}
-                        height={200}
-                        className="h-full w-full object-cover"
-                      />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="w-full text-center py-8 text-red-500">{error}</div>
+            ) : (
+              <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
+                {/* Fare options */}
+                {fareOptions.map((fare) => (
+                  <div key={fare.type} className="rounded-lg bg-[#f5f0ea] p-4">
+                    <div className="mb-2 rounded bg-[#0f2d3c] px-2 py-1 text-center text-sm font-medium text-white">
+                      {fare.type}
                     </div>
-                    <div className="text-left text-xl font-bold text-[#0f2d3c]">Business</div>
-                    <div className="text-left text-[#aa846e]">Enjoy more comfortable space</div>
-                  </div>
-
-                  <div className="mt-auto">
-                    <div className="text-left text-xl font-bold text-[#8a6a56] mt-4">VND 28,373,000</div>
+                    <div className="mb-4 text-center text-xl font-bold text-[#8a6a56]">
+                      {fare.price === null ? "Not Available" : <>VND {formatCurrency(fare.price)}</>}
+                    </div>
                     <Button
-                      className="mt-4 w-full bg-[#fef7f1] text-[#0f2d3c] border-2 border-[#0f2d3c] hover:bg-[#fef7f1]/90"
-                      onClick={() => onSelect("Business", 28373000)}
+                      className={`w-full border-2 border-[#0f2d3c] transition-colors ${
+                        fare.price !== null && fare.availability > 0
+                          ? "bg-[#fef7f1] text-[#0f2d3c] hover:bg-[#0f2d3c] hover:text-white"
+                          : "bg-gray-200 text-gray-500 cursor-not-allowed border-gray-300"
+                      }`}
+                      onClick={() =>
+                        fare.price !== null && fare.availability > 0 && handleSelectFare(fare.type, fare.price)
+                      }
+                      disabled={fare.price === null || fare.availability <= 0}
                     >
-                      Select <ChevronRight className="ml-1 h-4 w-4" />
+                      {fare.price === null
+                        ? "Not Available"
+                        : fare.availability > 0
+                          ? `Select (${fare.availability} left)`
+                          : "Sold Out"}
                     </Button>
+
+                    <div className="mt-4 space-y-4 text-sm">
+                      <div>
+                        <div className="font-medium text-[#0f2d3c]">Booking Class</div>
+                        {getBookingCodeInfo(fare.type)
+                          .split("\n")
+                          .map((line, i) => (
+                            <div key={i} className="text-[#aa846e]">
+                              {line}
+                            </div>
+                          ))}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center font-medium text-[#0f2d3c]">
+                          Seat Selection <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
+                        </div>
+                        <div className="text-[#aa846e]">{getSeatSelectionInfo(fare.type)}</div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center font-medium text-[#0f2d3c]">
+                          Checked Baggage <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
+                        </div>
+                        {getCheckedBaggageInfo(fare.type)
+                          .split("\n")
+                          .map((line, i) => (
+                            <div key={i} className="text-[#aa846e]">
+                              {line}
+                            </div>
+                          ))}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center font-medium text-[#0f2d3c]">
+                          COSMILE Mileage Accrual <Info className="ml-1 h-4 w-4 text-[#0f2d3c]" />
+                        </div>
+                        <div className="text-[#aa846e]">{calculateMileageAccrual(fare.type)}</div>
+                      </div>
+
+                      <div>
+                        <div className="font-medium text-[#0f2d3c]">COSMILE Upgrade Award</div>
+                        <div className="text-[#aa846e]">{getUpgradeRules(fare.type)}</div>
+                      </div>
+
+                      <div>
+                        <div className="font-medium text-[#0f2d3c]">Reissue Fee(Each Time)</div>
+                        <div className="text-[#aa846e]">{getReissueFee(fare.type)}</div>
+                      </div>
+
+                      <div>
+                        <div className="font-medium text-[#0f2d3c]">Refund Fee</div>
+                        <div className="text-[#aa846e]">{getRefundFee(fare.type)}</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

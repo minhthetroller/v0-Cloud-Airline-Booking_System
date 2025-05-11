@@ -132,7 +132,8 @@ export default function PassengerModal({ isOpen, onClose, onConfirm, initialDeta
                 <SelectValue placeholder="Select class" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="economy">Economy</SelectItem>
+                <SelectItem value="economy-saver">Economy Saver</SelectItem>
+                <SelectItem value="economy-flex">Economy Flex</SelectItem>
                 <SelectItem value="premium-economy">Premium Economy</SelectItem>
                 <SelectItem value="business">Business</SelectItem>
                 <SelectItem value="first">First Class</SelectItem>

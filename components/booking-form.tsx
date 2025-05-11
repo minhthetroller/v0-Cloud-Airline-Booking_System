@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -11,9 +11,8 @@ import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import AirportSelector from "@/components/airport-selector"
 import PassengerModal from "@/components/passenger-modal"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase"
 
 export default function BookingForm() {
   const [tripType, setTripType] = useState("round-trip")
@@ -26,12 +25,10 @@ export default function BookingForm() {
     adults: 1,
     children: 0,
     infants: 0,
-    travelClass: "economy",
+    travelClass: "economy-saver",
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [flightsExist, setFlightsExist] = useState(false)
-
   const getTotalPassengers = () => {
     return passengerDetails.adults + passengerDetails.children + passengerDetails.infants
   }
@@ -46,38 +43,9 @@ export default function BookingForm() {
   }
 
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Check if flights exist for the selected route
-  useEffect(() => {
-    const checkFlights = async () => {
-      if (!fromLocation || !toLocation) return
-
-      setLoading(true)
-      setError(null)
-
-      try {
-        const { data, error } = await supabaseClient
-          .from("flights")
-          .select("flightid")
-          .eq("departureairportcode", fromLocation)
-          .eq("arrivalairportcode", toLocation)
-          .limit(1)
-
-        if (error) throw new Error(error.message)
-
-        setFlightsExist(data && data.length > 0)
-      } catch (err) {
-        console.error("Error checking flights:", err)
-        setError("Failed to check flight availability")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkFlights()
-  }, [fromLocation, toLocation])
-
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!fromLocation || !toLocation || !departDate) {
       setError("Please select departure, destination, and travel dates")
       return
@@ -88,23 +56,28 @@ export default function BookingForm() {
       return
     }
 
-    if (!flightsExist) {
-      setError("No flights available for the selected route")
-      return
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Format dates for URL
+      const departDateStrUrl = departDate ? format(departDate, "yyyy-MM-dd") : ""
+      const returnDateStr = returnDate ? format(returnDate, "yyyy-MM-dd") : ""
+
+      // Navigate to results page with query parameters
+      router.push(
+        `/results?from=${fromLocation}&to=${toLocation}&tripType=${tripType}&departDate=${departDateStrUrl}${
+          returnDateStr ? `&returnDate=${returnDateStr}` : ""
+        }&adults=${passengerDetails.adults}&children=${passengerDetails.children}&infants=${
+          passengerDetails.infants
+        }&class=${passengerDetails.travelClass}`,
+      )
+    } catch (err) {
+      console.error("Error checking flights:", err)
+      setError("Failed to check flight availability")
+    } finally {
+      setLoading(false)
     }
-
-    // Format dates for URL
-    const departDateStr = departDate ? format(departDate, "yyyy-MM-dd") : ""
-    const returnDateStr = returnDate ? format(returnDate, "yyyy-MM-dd") : ""
-
-    // Navigate to results page with query parameters
-    router.push(
-      `/results?from=${fromLocation}&to=${toLocation}&tripType=${tripType}&departDate=${departDateStr}${
-        returnDateStr ? `&returnDate=${returnDateStr}` : ""
-      }&adults=${passengerDetails.adults}&children=${passengerDetails.children}&infants=${
-        passengerDetails.infants
-      }&class=${passengerDetails.travelClass}`,
-    )
   }
 
   return (
@@ -226,7 +199,7 @@ export default function BookingForm() {
         </div>
 
         <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" size="lg" onClick={handleSearch} disabled={loading}>
-          {loading ? "Checking..." : "Search Flights"}
+          {loading ? "Searching..." : "Search Flights"}
         </Button>
       </div>
     </div>
