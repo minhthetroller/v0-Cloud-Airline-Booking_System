@@ -6,14 +6,16 @@ import BookingForm from "@/components/booking-form"
 import LoginModal from "@/components/login-modal"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import supabaseClient from "@/lib/supabase"
+import { LogOut, User } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 
 export default function Home() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+  const { user, isAuthenticated, signOut, loading } = useAuth()
   const router = useRouter()
 
   const handleSignOut = async () => {
-    await supabaseClient.auth.signOut()
+    await signOut()
     router.refresh()
   }
 
@@ -22,7 +24,9 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8">
         <header className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="STARLUX Airlines Logo" width={180} height={60} className="h-8 w-auto" />
+            <Link href="/">
+              <Image src="/logo.png" alt="STARLUX Airlines Logo" width={180} height={60} className="h-8 w-auto" />
+            </Link>
           </div>
           <nav className="hidden md:block">
             <ul className="flex gap-6">
@@ -49,15 +53,35 @@ export default function Home() {
             </ul>
           </nav>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="hidden text-[#0f2d3c] hover:text-[#0f2d3c]/80 md:block"
-            >
-              Sign In
-            </button>
-            <Link href="/register" className="rounded-full bg-[#0f2d3c] px-4 py-2 text-white hover:bg-[#0f2d3c]/90">
-              Register
-            </Link>
+            {loading ? (
+              <div className="h-10 w-20 animate-pulse rounded-full bg-gray-200"></div>
+            ) : isAuthenticated && user ? (
+              <>
+                <Link href="/profile" className="flex items-center gap-2 text-[#0f2d3c] hover:text-[#0f2d3c]/80">
+                  <User className="h-4 w-4" />
+                  <span>{user.email}</span>
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2 rounded-full bg-[#0f2d3c] px-4 py-2 text-white hover:bg-[#0f2d3c]/90"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setIsLoginModalOpen(true)}
+                  className="hidden text-[#0f2d3c] hover:text-[#0f2d3c]/80 md:block"
+                >
+                  Sign In
+                </button>
+                <Link href="/register" className="rounded-full bg-[#0f2d3c] px-4 py-2 text-white hover:bg-[#0f2d3c]/90">
+                  Register
+                </Link>
+              </>
+            )}
           </div>
         </header>
       </div>
@@ -65,6 +89,7 @@ export default function Home() {
       {/* Login Modal */}
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
 
+      {/* Rest of the component remains unchanged */}
       {/* Full-width blue section */}
       <section className="mb-12 w-full bg-[#0f2d3c] py-8">
         <div className="container mx-auto px-4">

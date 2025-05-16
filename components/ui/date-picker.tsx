@@ -27,8 +27,15 @@ export function DatePicker({ selected, onSelect, disabled }: DatePickerProps) {
           {selected ? format(selected, "PPP") : <span>Pick a date</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
-        <Calendar mode="single" selected={selected} onSelect={onSelect} initialFocus disabled={disabled} />
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={onSelect}
+          initialFocus
+          disabled={disabled}
+          className="rounded-md border"
+        />
       </PopoverContent>
     </Popover>
   )

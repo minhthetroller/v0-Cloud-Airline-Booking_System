@@ -72,7 +72,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
       // Successfully logged in
       onClose()
-      router.push("/profile")
+      // Force a refresh of the page to ensure auth state is updated
+      window.location.href = "/profile"
     } catch (err: any) {
       console.error("Login error:", err)
       setError(err.message || "Failed to sign in. Please check your credentials.")

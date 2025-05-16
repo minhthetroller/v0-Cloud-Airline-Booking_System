@@ -73,7 +73,7 @@ export function EnhancedDatePicker({ selected, onSelect, disabled }: EnhancedDat
             <SelectTrigger className="w-[110px]">
               <SelectValue placeholder="Month" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" className="max-h-[200px] overflow-y-auto">
               {months.map((month, index) => (
                 <SelectItem key={month} value={index.toString()}>
                   {month}
@@ -86,7 +86,7 @@ export function EnhancedDatePicker({ selected, onSelect, disabled }: EnhancedDat
             <SelectTrigger className="w-[90px]">
               <SelectValue placeholder="Year" />
             </SelectTrigger>
-            <SelectContent className="max-h-[200px] overflow-y-auto">
+            <SelectContent position="popper" className="max-h-[200px] overflow-y-auto">
               {years.map((year) => (
                 <SelectItem key={year} value={year.toString()}>
                   {year}
@@ -106,6 +106,7 @@ export function EnhancedDatePicker({ selected, onSelect, disabled }: EnhancedDat
           }}
           disabled={disabled}
           initialFocus
+          className="rounded-md border"
         />
       </PopoverContent>
     </Popover>
