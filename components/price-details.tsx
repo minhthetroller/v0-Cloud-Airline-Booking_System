@@ -347,15 +347,16 @@ export default function PriceDetails({
             {loading ? (
               <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="rounded-lg bg-[#f5f0ea] p-4">
+                  <div key={i} className="rounded-lg bg-[#f5f0ea] p-4 min-h-[650px]">
                     <Skeleton className="h-6 w-24 mb-2 bg-gray-300" />
                     <Skeleton className="h-8 w-32 mb-4 bg-gray-300" />
                     <Skeleton className="h-10 w-full mb-4 bg-gray-300" />
                     <div className="space-y-4">
-                      {[1, 2, 3, 4, 5].map((j) => (
-                        <div key={j}>
+                      {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+                        <div key={j} className="mb-4">
                           <Skeleton className="h-4 w-32 mb-1 bg-gray-300" />
                           <Skeleton className="h-4 w-full bg-gray-300" />
+                          <Skeleton className="h-4 w-3/4 mt-1 bg-gray-300" />
                         </div>
                       ))}
                     </div>
