@@ -14,6 +14,7 @@ import Link from "next/link"
 import Image from "next/image"
 import supabaseClient from "@/lib/supabase"
 import { useRouter } from "next/navigation"
+import { v4 as uuidv4 } from "uuid"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -28,6 +29,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+
+  // Cookie helper functions
+  function setCookie(name: string, value: string, days: number) {
+    const expires = new Date()
+    expires.setDate(expires.getDate() + days)
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Strict`
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,7 +52,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       // Check if the user exists in our database
       const { data: userCheck, error: userCheckError } = await supabaseClient
         .from("users")
-        .select("accountstatus, passwordhash, customerid")
+        .select("accountstatus, passwordhash, customerid, userid")
         .eq("username", email)
         .single()
 
@@ -63,15 +71,34 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         throw new Error("Invalid email or password")
       }
 
-      // Store user info in session storage for client-side auth
-      sessionStorage.setItem("isLoggedIn", "true")
-      sessionStorage.setItem("userEmail", email)
-      sessionStorage.setItem("customerId", userCheck.customerid)
+      // Generate a session token
+      const token = uuidv4()
 
-      // Successfully logged in - no need to update lastlogin as the column doesn't exist
+      // Set expiration date (30 days from now or 1 day if not remember me)
+      const expires = new Date()
+      expires.setDate(expires.getDate() + (rememberMe ? 30 : 1))
+
+      // Delete any existing sessions for this user
+      await supabaseClient.from("sessions").delete().eq("userid", userCheck.userid)
+
+      // Create a new session in the database
+      const { error: sessionError } = await supabaseClient.from("sessions").insert({
+        userid: userCheck.userid,
+        token: token,
+        expires: expires.toISOString(),
+      })
+
+      if (sessionError) {
+        console.error("Session creation error:", sessionError)
+        throw new Error("Failed to create session")
+      }
+
+      // Store session token in cookie
+      setCookie("session_token", token, rememberMe ? 30 : 1)
 
       // Successfully logged in
       onClose()
+
       // Force a refresh of the page to ensure auth state is updated
       window.location.href = "/profile"
     } catch (err: any) {
@@ -142,7 +169,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     onCheckedChange={(checked) => setRememberMe(checked as boolean)}
                   />
                   <Label htmlFor="remember-me" className="text-sm text-gray-600">
-                    Remember my COSMILE ID or e-mail
+                    Remember me for 30 days
                   </Label>
                 </div>
               </div>

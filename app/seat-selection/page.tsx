@@ -331,8 +331,16 @@ export default function SeatSelectionPage() {
     // Store reservation IDs
     sessionStorage.setItem("seatReservationIds", JSON.stringify(reservationIds))
 
-    // Open login or guest dialog
-    setLoginOrGuestDialogOpen(true)
+    // Check if user is already logged in
+    const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
+
+    if (isLoggedIn) {
+      // If logged in, go directly to confirmation page
+      router.push("/confirmation")
+    } else {
+      // If not logged in, open login or guest dialog
+      setLoginOrGuestDialogOpen(true)
+    }
   }
 
   const handleSwitchFlight = () => {

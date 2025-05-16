@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Check, Printer } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
+import supabaseClient from "@/lib/supabase"
 
 interface SelectedFlightDetails {
   flightId: number
@@ -48,14 +49,17 @@ export default function ConfirmationPage() {
   const [bookingReference, setBookingReference] = useState<string>("")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [customerId, setCustomerId] = useState<string | null>(null)
 
   useEffect(() => {
     // Check if user is logged in
     const loggedIn = sessionStorage.getItem("isLoggedIn") === "true"
     const email = sessionStorage.getItem("userEmail")
+    const customerIdFromSession = sessionStorage.getItem("customerId")
 
     setIsLoggedIn(loggedIn)
     setUserEmail(email)
+    setCustomerId(customerIdFromSession)
 
     // Load flight and seat details from session storage
     const loadBookingDetails = async () => {
@@ -106,9 +110,14 @@ export default function ConfirmationPage() {
           })
         } else {
           // For guest users, use data from session storage if available
-          const guestInfo = sessionStorage.getItem("guestInfo")
+          const guestInfo = sessionStorage.getItem("guestInformation")
           if (guestInfo) {
-            setCustomerInfo(JSON.parse(guestInfo))
+            const parsedInfo = JSON.parse(guestInfo)
+            setCustomerInfo({
+              name: `${parsedInfo.firstName} ${parsedInfo.lastName}`,
+              email: parsedInfo.email,
+              phone: parsedInfo.phone,
+            })
           }
         }
       } catch (err: any) {
@@ -149,8 +158,115 @@ export default function ConfirmationPage() {
     return new Intl.NumberFormat("vi-VN").format(amount)
   }
 
-  const handleContinueToPayment = () => {
-    router.push("/payment")
+  const handleContinueToPayment = async () => {
+    try {
+      setLoading(true)
+
+      if (!customerId) {
+        throw new Error("Customer ID not found")
+      }
+
+      if (!departureFlight || !departureSeat) {
+        throw new Error("Flight or seat information is missing")
+      }
+
+      // Create booking record
+      const { data: bookingData, error: bookingError } = await supabaseClient
+        .from("bookings")
+        .insert({
+          userid: isLoggedIn ? customerId : null, // Only set userid if logged in
+          bookingdatetime: new Date().toISOString(),
+          bookingstatus: "Confirmed",
+          totalprice: calculateTotalPrice(),
+          currencycode: "VND",
+          bookingreference: bookingReference,
+        })
+        .select("bookingid")
+        .single()
+
+      if (bookingError) {
+        throw new Error(`Error creating booking: ${bookingError.message}`)
+      }
+
+      // Create passenger record
+      const { data: passengerData, error: passengerError } = await supabaseClient
+        .from("passengers")
+        .insert({
+          customerid: customerId,
+          bookingid: bookingData.bookingid,
+          passengertype: "Adult", // Add passengertype field with default value "Adult"
+        })
+        .select("passengerid")
+        .single()
+
+      if (passengerError) {
+        throw new Error(`Error creating passenger: ${passengerError.message}`)
+      }
+
+      // Create ticket for departure flight
+      const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
+        bookingid: bookingData.bookingid,
+        flightid: departureFlight.flightId,
+        passengerid: passengerData.passengerid,
+        seatid: departureSeat.seatid,
+        ticketstatus: "Confirmed",
+        ticketprice: departureFlight.price,
+        classid: departureSeat.classid,
+      })
+
+      if (departureTicketError) {
+        throw new Error(`Error creating departure ticket: ${departureTicketError.message}`)
+      }
+
+      // Create ticket for return flight if it exists
+      if (isRoundTrip && returnFlight && returnSeat) {
+        const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
+          bookingid: bookingData.bookingid,
+          flightid: returnFlight.flightId,
+          passengerid: passengerData.passengerid,
+          seatid: returnSeat.seatid,
+          ticketstatus: "Confirmed",
+          ticketprice: returnFlight.price,
+          classid: returnSeat.classid,
+        })
+
+        if (returnTicketError) {
+          throw new Error(`Error creating return ticket: ${returnTicketError.message}`)
+        }
+      }
+
+      // Mark seats as occupied
+      const { error: departureSeatError } = await supabaseClient
+        .from("seats")
+        .update({ isoccupied: true })
+        .eq("seatid", departureSeat.seatid)
+
+      if (departureSeatError) {
+        throw new Error(`Error updating departure seat: ${departureSeatError.message}`)
+      }
+
+      if (returnSeat) {
+        const { error: returnSeatError } = await supabaseClient
+          .from("seats")
+          .update({ isoccupied: true })
+          .eq("seatid", returnSeat.seatid)
+
+        if (returnSeatError) {
+          throw new Error(`Error updating return seat: ${returnSeatError.message}`)
+        }
+      }
+
+      // Store booking ID in session storage for payment page
+      sessionStorage.setItem("bookingId", bookingData.bookingid)
+      sessionStorage.setItem("bookingReference", bookingReference)
+
+      // Redirect to payment page
+      router.push("/payment")
+    } catch (err: any) {
+      console.error("Error creating booking records:", err)
+      setError(err.message || "Failed to process booking. Please try again.")
+      setLoading(false)
+    }
   }
 
   const handlePrint = () => {
@@ -296,8 +412,8 @@ export default function ConfirmationPage() {
       <div className="fixed bottom-0 left-0 right-0 z-10 bg-white p-4 shadow-lg">
         <div className="container mx-auto flex items-center justify-between">
           <div className="text-xl font-bold text-[#0f2d3c]">Total: {formatCurrency(calculateTotalPrice())} VND</div>
-          <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" onClick={handleContinueToPayment}>
-            Continue to Payment
+          <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" onClick={handleContinueToPayment} disabled={loading}>
+            {loading ? "Processing..." : "Continue to Payment"}
             <ChevronRight className="ml-1 h-4 w-4" />
           </Button>
         </div>

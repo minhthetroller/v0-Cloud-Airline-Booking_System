@@ -707,6 +707,12 @@ export default function ResultsPage() {
   const fromDisplay = airports[from]?.city || from
   const toDisplay = airports[to]?.city || to
 
+  useEffect(() => {
+    if (departDate) {
+      setSelectedDate(new Date(departDate))
+    }
+  }, [departDate])
+
   return (
     <main className="min-h-screen bg-[#0f2d3c] pb-20 text-white">
       <div className="container mx-auto px-4 py-6">
@@ -745,8 +751,10 @@ export default function ResultsPage() {
           </div>
 
           <div className="grid grid-cols-7">
-            {dates.map((date, index) => {
-              const isSelected = index === 3
+            {dates.map((date) => {
+              // Check if this date matches the search date (departDate)
+              const searchDateObj = departDate ? new Date(departDate) : new Date()
+              const isSelected = date.formattedDate === format(searchDateObj, "yyyy-MM-dd")
               return (
                 <div
                   key={date.dayOfMonth}

@@ -103,15 +103,17 @@ export default function SeatMap({
   const handleSeatClick = (seat: Seat) => {
     if (seat.isoccupied || seat.seattype === "blocked") return // Cannot select occupied or blocked seats
 
-    // Check if user is trying to select a seat in a higher class (lower classId means higher class)
-    if (seat.classid < userClassId) {
+    // Check if user is trying to select a seat in a higher class
+    // Higher classId means higher class (e.g., First Class is 5, Economy Saver is 1)
+    if (seat.classid > userClassId) {
       setSeatToChange(seat)
       setUpgradeDialogOpen(true)
       return
     }
 
-    // Check if user is trying to select a seat in a lower class (higher classId means lower class)
-    if (seat.classid > userClassId) {
+    // Check if user is trying to select a seat in a lower class
+    // Lower classId means lower class
+    if (seat.classid < userClassId) {
       setSeatToChange(seat)
       setDowngradeDialogOpen(true)
       return
@@ -302,8 +304,8 @@ export default function SeatMap({
           <DialogHeader>
             <DialogTitle>Upgrade Required</DialogTitle>
             <DialogDescription>
-              This seat requires a higher class ticket. Would you like to upgrade your ticket from{" "}
-              {getClassName(userClassId)} to {seatToChange ? getClassName(seatToChange.classid) : ""}?
+              This seat is in a higher class ({seatToChange ? getClassName(seatToChange.classid) : ""}) than your
+              current ticket ({getClassName(userClassId)}). Would you like to upgrade your ticket?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Edit2, Check, X, Search, Calendar, Plane } from "lucide-react"
+import { AlertCircle, Edit2, Check, X, Calendar, Plane } from "lucide-react"
 import supabaseClient from "@/lib/supabase"
 import { format } from "date-fns"
 import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
+import { useLanguage } from "@/lib/language-context"
 
 interface UserProfile {
   id: string
@@ -64,22 +66,25 @@ export default function ProfilePage() {
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateSuccess, setUpdateSuccess] = useState(false)
   const router = useRouter()
+  const { isAuthenticated, user: authUser, signOut } = useAuth()
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
+  const { language, setLanguage, t } = useLanguage()
 
   useEffect(() => {
     const checkAuth = async () => {
-      const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
-      const userEmail = sessionStorage.getItem("userEmail")
-
-      if (!isLoggedIn || !userEmail) {
+      // If not authenticated, redirect to home
+      if (!isAuthenticated) {
         router.push("/")
         return
       }
 
-      fetchUserData(userEmail)
+      if (authUser) {
+        fetchUserData(authUser.email)
+      }
     }
 
     checkAuth()
-  }, [router])
+  }, [isAuthenticated, authUser, router])
 
   const fetchUserData = async (email: string) => {
     setLoading(true)
@@ -112,7 +117,7 @@ export default function ProfilePage() {
           .from("bookings")
           .select("*")
           .eq("userid", userRecord.userid)
-          .order("bookingdate", { ascending: false })
+          .order("bookingdatetime", { ascending: false })
 
         if (!error && data) {
           bookingData = data
@@ -236,8 +241,12 @@ export default function ProfilePage() {
   }
 
   const handleSignOut = async () => {
-    await supabaseClient.auth.signOut()
-    router.push("/")
+    await signOut()
+  }
+
+  const toggleLanguage = () => {
+    setLanguage(language === "en" ? "vi" : "en")
+    setLanguageMenuOpen(false)
   }
 
   if (loading) {
@@ -273,30 +282,9 @@ export default function ProfilePage() {
             </Link>
           </div>
           <div className="flex items-center space-x-6">
-            <button className="text-white">
-              <Search className="h-5 w-5" />
-            </button>
-            <a href="#" className="text-white flex items-center">
-              <span className="mr-1">béshopping</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            </a>
             <div className="relative group">
               <button className="text-white flex items-center">
-                <span className="mr-1">Global (English)</span>
+                <span className="mr-1">{language === "en" ? "Global (English)" : "Toàn cầu (Tiếng Việt)"}</span>
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -307,11 +295,22 @@ export default function ProfilePage() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  onClick={() => setLanguageMenuOpen(!languageMenuOpen)}
                 >
                   <circle cx="12" cy="12" r="10" />
                   <line x1="2" y1="12" x2="22" y2="12" />
                   <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                 </svg>
+                {languageMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                    <button
+                      onClick={toggleLanguage}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      {language === "en" ? "Tiếng Việt" : "English"}
+                    </button>
+                  </div>
+                )}
               </button>
             </div>
             <div className="flex items-center">
@@ -345,28 +344,13 @@ export default function ProfilePage() {
         <div className="container mx-auto px-4">
           <ul className="flex space-x-8">
             <li>
-              <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
-                Plan a Trip
-              </a>
+              <Link href="/" className="block py-4 text-white hover:text-[#9b6a4f]">
+                Home
+              </Link>
             </li>
             <li>
               <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
-                Timetable
-              </a>
-            </li>
-            <li>
-              <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
-                Flight Status
-              </a>
-            </li>
-            <li>
-              <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
-                Check-in & Fly
-              </a>
-            </li>
-            <li>
-              <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
-                Experience
+                My Bookings
               </a>
             </li>
             <li>
@@ -564,512 +548,517 @@ export default function ProfilePage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* My Account Tab */}
-          <TabsContent value="account" className="pt-6">
-            <div className="bg-[#0a1e29] rounded-lg p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">Personal Information</h3>
-                {!editMode ? (
-                  <Button
-                    onClick={() => setEditMode(true)}
-                    variant="outline"
-                    className="border-[#9b6a4f] text-[#9b6a4f]"
-                  >
-                    <Edit2 className="mr-2 h-4 w-4" /> Edit
-                  </Button>
-                ) : (
-                  <div className="flex space-x-2">
+          {/* Add margin between tabs and content */}
+          <div className="mt-8">
+            {/* My Account Tab */}
+            <TabsContent value="account" className="pt-6">
+              <div className="bg-[#0a1e29] rounded-lg p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold">Personal Information</h3>
+                  {!editMode ? (
                     <Button
-                      onClick={() => {
-                        setEditMode(false)
-                        setFormData(customerDetails)
-                        setUpdateError(null)
-                        setUpdateSuccess(false)
-                      }}
+                      onClick={() => setEditMode(true)}
                       variant="outline"
-                      className="border-red-500 text-red-500"
+                      className="border-[#9b6a4f] text-[#9b6a4f]"
                     >
-                      <X className="mr-2 h-4 w-4" /> Cancel
+                      <Edit2 className="mr-2 h-4 w-4" /> Edit
                     </Button>
-                    <Button
-                      onClick={handleUpdateProfile}
-                      className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90"
-                      disabled={updateLoading}
-                    >
-                      <Check className="mr-2 h-4 w-4" /> Save
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {updateError && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{updateError}</AlertDescription>
-                </Alert>
-              )}
-
-              {updateSuccess && (
-                <Alert className="mb-4 bg-green-500/10 text-green-500 border-green-500">
-                  <Check className="h-4 w-4" />
-                  <AlertDescription>Profile updated successfully!</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {editMode && formData ? (
-                  <>
-                    <div>
-                      <Label htmlFor="title" className="text-gray-400 mb-1 block">
-                        Title
-                      </Label>
-                      <Select
-                        value={formData.pronoun}
-                        onValueChange={(value) => handleInputChange("pronoun", value)}
-                        disabled={!editMode}
+                  ) : (
+                    <div className="flex space-x-2">
+                      <Button
+                        onClick={() => {
+                          setEditMode(false)
+                          setFormData(customerDetails)
+                          setUpdateError(null)
+                          setUpdateSuccess(false)
+                        }}
+                        variant="outline"
+                        className="border-red-500 text-red-500"
                       >
-                        <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
-                          <SelectValue placeholder="Select title" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Mr.">Mr.</SelectItem>
-                          <SelectItem value="Mrs.">Mrs.</SelectItem>
-                          <SelectItem value="Ms.">Ms.</SelectItem>
-                          <SelectItem value="Dr.">Dr.</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="email" className="text-gray-400 mb-1 block">
-                        Email
-                      </Label>
-                      <Input
-                        id="email"
-                        value={user.email}
-                        disabled
-                        className="bg-[#0f2d3c] border-[#1a3a4a] text-gray-400"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="firstName" className="text-gray-400 mb-1 block">
-                        First Name
-                      </Label>
-                      <Input
-                        id="firstName"
-                        value={formData.firstname}
-                        onChange={(e) => handleInputChange("firstname", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="lastName" className="text-gray-400 mb-1 block">
-                        Last Name
-                      </Label>
-                      <Input
-                        id="lastName"
-                        value={formData.lastname}
-                        onChange={(e) => handleInputChange("lastname", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="idNumber" className="text-gray-400 mb-1 block">
-                        Identity Card Number
-                      </Label>
-                      <Input
-                        id="idNumber"
-                        value={formData.identitycardnumber}
-                        onChange={(e) => handleInputChange("identitycardnumber", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="phoneNumber" className="text-gray-400 mb-1 block">
-                        Phone Number
-                      </Label>
-                      <Input
-                        id="phoneNumber"
-                        value={formData.phonenumber}
-                        onChange={(e) => handleInputChange("phonenumber", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="gender" className="text-gray-400 mb-1 block">
-                        Gender
-                      </Label>
-                      <Select
-                        value={formData.gender}
-                        onValueChange={(value) => handleInputChange("gender", value)}
-                        disabled={!editMode}
+                        <X className="mr-2 h-4 w-4" /> Cancel
+                      </Button>
+                      <Button
+                        onClick={handleUpdateProfile}
+                        className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90"
+                        disabled={updateLoading}
                       >
-                        <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
-                          <SelectValue placeholder="Select gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                          <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <Check className="mr-2 h-4 w-4" /> Save
+                      </Button>
                     </div>
-
-                    <div>
-                      <Label htmlFor="nationality" className="text-gray-400 mb-1 block">
-                        Nationality
-                      </Label>
-                      <Select
-                        value={formData.nationality}
-                        onValueChange={(value) => handleInputChange("nationality", value)}
-                        disabled={!editMode}
-                      >
-                        <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
-                          <SelectValue placeholder="Select nationality" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[200px] overflow-y-auto">
-                          <SelectItem value="VN">Vietnam</SelectItem>
-                          <SelectItem value="US">United States</SelectItem>
-                          <SelectItem value="UK">United Kingdom</SelectItem>
-                          <SelectItem value="CA">Canada</SelectItem>
-                          <SelectItem value="AU">Australia</SelectItem>
-                          <SelectItem value="JP">Japan</SelectItem>
-                          <SelectItem value="TW">Taiwan</SelectItem>
-                          <SelectItem value="CN">China</SelectItem>
-                          <SelectItem value="HK">Hong Kong</SelectItem>
-                          <SelectItem value="SG">Singapore</SelectItem>
-                          <SelectItem value="MY">Malaysia</SelectItem>
-                          <SelectItem value="TH">Thailand</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="addressLine" className="text-gray-400 mb-1 block">
-                        Address
-                      </Label>
-                      <Input
-                        id="addressLine"
-                        value={formData.addressline}
-                        onChange={(e) => handleInputChange("addressline", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="city" className="text-gray-400 mb-1 block">
-                        City
-                      </Label>
-                      <Input
-                        id="city"
-                        value={formData.city}
-                        onChange={(e) => handleInputChange("city", e.target.value)}
-                        disabled={!editMode}
-                        className="bg-[#0f2d3c] border-[#1a3a4a]"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="country" className="text-gray-400 mb-1 block">
-                        Country
-                      </Label>
-                      <Select
-                        value={formData.country}
-                        onValueChange={(value) => handleInputChange("country", value)}
-                        disabled={!editMode}
-                      >
-                        <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
-                          <SelectValue placeholder="Select country" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[200px] overflow-y-auto">
-                          <SelectItem value="VN">Vietnam</SelectItem>
-                          <SelectItem value="US">United States</SelectItem>
-                          <SelectItem value="UK">United Kingdom</SelectItem>
-                          <SelectItem value="CA">Canada</SelectItem>
-                          <SelectItem value="AU">Australia</SelectItem>
-                          <SelectItem value="JP">Japan</SelectItem>
-                          <SelectItem value="TW">Taiwan</SelectItem>
-                          <SelectItem value="CN">China</SelectItem>
-                          <SelectItem value="HK">Hong Kong</SelectItem>
-                          <SelectItem value="SG">Singapore</SelectItem>
-                          <SelectItem value="MY">Malaysia</SelectItem>
-                          <SelectItem value="TH">Thailand</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <p className="text-gray-400 mb-1">Title</p>
-                      <p>{customerDetails?.pronoun || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Email</p>
-                      <p>{user.email}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">First Name</p>
-                      <p>{customerDetails?.firstname || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Last Name</p>
-                      <p>{customerDetails?.lastname || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Identity Card Number</p>
-                      <p>{customerDetails?.identitycardnumber || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Phone Number</p>
-                      <p>{customerDetails?.phonenumber || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Gender</p>
-                      <p>
-                        {customerDetails?.gender
-                          ? customerDetails.gender.charAt(0).toUpperCase() + customerDetails.gender.slice(1)
-                          : "N/A"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Nationality</p>
-                      <p>{customerDetails?.nationality || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Address</p>
-                      <p>{customerDetails?.addressline || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">City</p>
-                      <p>{customerDetails?.city || "N/A"}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-gray-400 mb-1">Country</p>
-                      <p>{customerDetails?.country || "N/A"}</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Points Tab */}
-          <TabsContent value="points" className="pt-6">
-            <div className="bg-[#0a1e29] rounded-lg p-6">
-              <h3 className="text-xl font-bold mb-6">Points & Tier Status</h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <div className="mb-6">
-                    <p className="text-gray-400 mb-1">Current Points</p>
-                    <p className="text-3xl font-bold text-[#9b6a4f]">{user.points.toLocaleString()}</p>
-                  </div>
-
-                  <div className="mb-6">
-                    <p className="text-gray-400 mb-1">Current Tier</p>
-                    <p className="text-3xl font-bold text-[#9b6a4f]">{user.tier}</p>
-                  </div>
-
-                  <div className="mb-6">
-                    <p className="text-gray-400 mb-1">Tier Benefits</p>
-                    <ul className="list-disc list-inside space-y-2 mt-2">
-                      {user.tier === "Stratus" && (
-                        <>
-                          <li>Priority check-in</li>
-                          <li>Extra baggage allowance (5kg)</li>
-                          <li>10% bonus points on flights</li>
-                        </>
-                      )}
-                      {user.tier === "Altostratus" && (
-                        <>
-                          <li>Priority check-in and boarding</li>
-                          <li>Extra baggage allowance (10kg)</li>
-                          <li>25% bonus points on flights</li>
-                          <li>Access to airport lounges</li>
-                          <li>Priority waitlist</li>
-                        </>
-                      )}
-                      {user.tier === "Cirrus" && (
-                        <>
-                          <li>Priority check-in, boarding, and baggage handling</li>
-                          <li>Extra baggage allowance (15kg)</li>
-                          <li>50% bonus points on flights</li>
-                          <li>Access to premium airport lounges</li>
-                          <li>Priority waitlist and guaranteed seats</li>
-                          <li>Complimentary upgrades (subject to availability)</li>
-                          <li>Dedicated customer service line</li>
-                        </>
-                      )}
-                    </ul>
-                  </div>
+                  )}
                 </div>
 
-                <div>
-                  <div className="bg-[#0f2d3c] rounded-lg p-6">
-                    <h4 className="text-lg font-bold mb-4">Tier Progress</h4>
+                {updateError && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{updateError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {updateSuccess && (
+                  <Alert className="mb-4 bg-green-500/10 text-green-500 border-green-500">
+                    <Check className="h-4 w-4" />
+                    <AlertDescription>Profile updated successfully!</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {editMode && formData ? (
+                    <>
+                      <div>
+                        <Label htmlFor="title" className="text-gray-400 mb-1 block">
+                          Title
+                        </Label>
+                        <Select
+                          value={formData.pronoun}
+                          onValueChange={(value) => handleInputChange("pronoun", value)}
+                          disabled={!editMode}
+                        >
+                          <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
+                            <SelectValue placeholder="Select title" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Mr.">Mr.</SelectItem>
+                            <SelectItem value="Mrs.">Mrs.</SelectItem>
+                            <SelectItem value="Ms.">Ms.</SelectItem>
+                            <SelectItem value="Dr.">Dr.</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="email" className="text-gray-400 mb-1 block">
+                          Email
+                        </Label>
+                        <Input
+                          id="email"
+                          value={user.email}
+                          disabled
+                          className="bg-[#0f2d3c] border-[#1a3a4a] text-gray-400"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="firstName" className="text-gray-400 mb-1 block">
+                          First Name
+                        </Label>
+                        <Input
+                          id="firstName"
+                          value={formData.firstname}
+                          onChange={(e) => handleInputChange("firstname", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="lastName" className="text-gray-400 mb-1 block">
+                          Last Name
+                        </Label>
+                        <Input
+                          id="lastName"
+                          value={formData.lastname}
+                          onChange={(e) => handleInputChange("lastname", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="idNumber" className="text-gray-400 mb-1 block">
+                          Identity Card Number
+                        </Label>
+                        <Input
+                          id="idNumber"
+                          value={formData.identitycardnumber}
+                          onChange={(e) => handleInputChange("identitycardnumber", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="phoneNumber" className="text-gray-400 mb-1 block">
+                          Phone Number
+                        </Label>
+                        <Input
+                          id="phoneNumber"
+                          value={formData.phonenumber}
+                          onChange={(e) => handleInputChange("phonenumber", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="gender" className="text-gray-400 mb-1 block">
+                          Gender
+                        </Label>
+                        <Select
+                          value={formData.gender}
+                          onValueChange={(value) => handleInputChange("gender", value)}
+                          disabled={!editMode}
+                        >
+                          <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="nationality" className="text-gray-400 mb-1 block">
+                          Nationality
+                        </Label>
+                        <Select
+                          value={formData.nationality}
+                          onValueChange={(value) => handleInputChange("nationality", value)}
+                          disabled={!editMode}
+                        >
+                          <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
+                            <SelectValue placeholder="Select nationality" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[200px] overflow-y-auto">
+                            <SelectItem value="VN">Vietnam</SelectItem>
+                            <SelectItem value="US">United States</SelectItem>
+                            <SelectItem value="UK">United Kingdom</SelectItem>
+                            <SelectItem value="CA">Canada</SelectItem>
+                            <SelectItem value="AU">Australia</SelectItem>
+                            <SelectItem value="JP">Japan</SelectItem>
+                            <SelectItem value="TW">Taiwan</SelectItem>
+                            <SelectItem value="CN">China</SelectItem>
+                            <SelectItem value="HK">Hong Kong</SelectItem>
+                            <SelectItem value="SG">Singapore</SelectItem>
+                            <SelectItem value="MY">Malaysia</SelectItem>
+                            <SelectItem value="TH">Thailand</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="addressLine" className="text-gray-400 mb-1 block">
+                          Address
+                        </Label>
+                        <Input
+                          id="addressLine"
+                          value={formData.addressline}
+                          onChange={(e) => handleInputChange("addressline", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="city" className="text-gray-400 mb-1 block">
+                          City
+                        </Label>
+                        <Input
+                          id="city"
+                          value={formData.city}
+                          onChange={(e) => handleInputChange("city", e.target.value)}
+                          disabled={!editMode}
+                          className="bg-[#0f2d3c] border-[#1a3a4a]"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="country" className="text-gray-400 mb-1 block">
+                          Country
+                        </Label>
+                        <Select
+                          value={formData.country}
+                          onValueChange={(value) => handleInputChange("country", value)}
+                          disabled={!editMode}
+                        >
+                          <SelectTrigger className="bg-[#0f2d3c] border-[#1a3a4a]">
+                            <SelectValue placeholder="Select country" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[200px] overflow-y-auto">
+                            <SelectItem value="VN">Vietnam</SelectItem>
+                            <SelectItem value="US">United States</SelectItem>
+                            <SelectItem value="UK">United Kingdom</SelectItem>
+                            <SelectItem value="CA">Canada</SelectItem>
+                            <SelectItem value="AU">Australia</SelectItem>
+                            <SelectItem value="JP">Japan</SelectItem>
+                            <SelectItem value="TW">Taiwan</SelectItem>
+                            <SelectItem value="CN">China</SelectItem>
+                            <SelectItem value="HK">Hong Kong</SelectItem>
+                            <SelectItem value="SG">Singapore</SelectItem>
+                            <SelectItem value="MY">Malaysia</SelectItem>
+                            <SelectItem value="TH">Thailand</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-gray-400 mb-1">Title</p>
+                        <p>{customerDetails?.pronoun || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Email</p>
+                        <p>{user.email}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">First Name</p>
+                        <p>{customerDetails?.firstname || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Last Name</p>
+                        <p>{customerDetails?.lastname || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Identity Card Number</p>
+                        <p>{customerDetails?.identitycardnumber || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Phone Number</p>
+                        <p>{customerDetails?.phonenumber || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Gender</p>
+                        <p>
+                          {customerDetails?.gender
+                            ? customerDetails.gender.charAt(0).toUpperCase() + customerDetails.gender.slice(1)
+                            : "N/A"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Nationality</p>
+                        <p>{customerDetails?.nationality || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Address</p>
+                        <p>{customerDetails?.addressline || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">City</p>
+                        <p>{customerDetails?.city || "N/A"}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 mb-1">Country</p>
+                        <p>{customerDetails?.country || "N/A"}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Points Tab */}
+            <TabsContent value="points" className="pt-6">
+              <div className="bg-[#0a1e29] rounded-lg p-6">
+                <h3 className="text-xl font-bold mb-6">Points & Tier Status</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div>
+                    <div className="mb-6">
+                      <p className="text-gray-400 mb-1">Current Points</p>
+                      <p className="text-3xl font-bold text-[#9b6a4f]">{user.points.toLocaleString()}</p>
+                    </div>
 
                     <div className="mb-6">
-                      <div className="flex justify-between mb-2">
-                        <span>Stratus</span>
-                        <span>Altostratus</span>
-                        <span>Cirrus</span>
-                      </div>
-                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#9b6a4f]"
-                          style={{
-                            width: `${Math.min(100, (user.points / 10000) * 100)}%`,
-                          }}
-                        ></div>
-                      </div>
-                      <div className="flex justify-between mt-1 text-xs text-gray-400">
-                        <span>0</span>
-                        <span>5,000</span>
-                        <span>10,000</span>
-                      </div>
+                      <p className="text-gray-400 mb-1">Current Tier</p>
+                      <p className="text-3xl font-bold text-[#9b6a4f]">{user.tier}</p>
                     </div>
 
-                    <div className="mb-4">
-                      <p className="text-gray-400 mb-1">Next Tier</p>
-                      <p className="text-xl font-bold">
-                        {user.tier === "Stratus"
-                          ? "Altostratus"
-                          : user.tier === "Altostratus"
-                            ? "Cirrus"
-                            : "You've reached the highest tier"}
-                      </p>
+                    <div className="mb-6">
+                      <p className="text-gray-400 mb-1">Tier Benefits</p>
+                      <ul className="list-disc list-inside space-y-2 mt-2">
+                        {user.tier === "Stratus" && (
+                          <>
+                            <li>Priority check-in</li>
+                            <li>Extra baggage allowance (5kg)</li>
+                            <li>10% bonus points on flights</li>
+                          </>
+                        )}
+                        {user.tier === "Altostratus" && (
+                          <>
+                            <li>Priority check-in and boarding</li>
+                            <li>Extra baggage allowance (10kg)</li>
+                            <li>25% bonus points on flights</li>
+                            <li>Access to airport lounges</li>
+                            <li>Priority waitlist</li>
+                          </>
+                        )}
+                        {user.tier === "Cirrus" && (
+                          <>
+                            <li>Priority check-in, boarding, and baggage handling</li>
+                            <li>Extra baggage allowance (15kg)</li>
+                            <li>50% bonus points on flights</li>
+                            <li>Access to premium airport lounges</li>
+                            <li>Priority waitlist and guaranteed seats</li>
+                            <li>Complimentary upgrades (subject to availability)</li>
+                            <li>Dedicated customer service line</li>
+                          </>
+                        )}
+                      </ul>
                     </div>
+                  </div>
 
-                    <div className="mb-4">
-                      <p className="text-gray-400 mb-1">Points Needed</p>
-                      <p className="text-xl font-bold">
-                        {user.tier === "Stratus"
-                          ? (5000 - user.points).toLocaleString()
-                          : user.tier === "Altostratus"
-                            ? (10000 - user.points).toLocaleString()
-                            : "0"}
-                      </p>
-                    </div>
+                  <div>
+                    <div className="bg-[#0f2d3c] rounded-lg p-6">
+                      <h4 className="text-lg font-bold mb-4">Tier Progress</h4>
 
-                    <div>
-                      <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90 w-full">View Point History</Button>
+                      <div className="mb-6">
+                        <div className="flex justify-between mb-2">
+                          <span>Stratus</span>
+                          <span>Altostratus</span>
+                          <span>Cirrus</span>
+                        </div>
+                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#9b6a4f]"
+                            style={{
+                              width: `${Math.min(100, (user.points / 10000) * 100)}%`,
+                            }}
+                          ></div>
+                        </div>
+                        <div className="flex justify-between mt-1 text-xs text-gray-400">
+                          <span>0</span>
+                          <span>5,000</span>
+                          <span>10,000</span>
+                        </div>
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="text-gray-400 mb-1">Next Tier</p>
+                        <p className="text-xl font-bold">
+                          {user.tier === "Stratus"
+                            ? "Altostratus"
+                            : user.tier === "Altostratus"
+                              ? "Cirrus"
+                              : "You've reached the highest tier"}
+                        </p>
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="text-gray-400 mb-1">Points Needed</p>
+                        <p className="text-xl font-bold">
+                          {user.tier === "Stratus"
+                            ? (5000 - user.points).toLocaleString()
+                            : user.tier === "Altostratus"
+                              ? (10000 - user.points).toLocaleString()
+                              : "0"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90 w-full">View Point History</Button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </TabsContent>
+            </TabsContent>
 
-          {/* Booking History Tab */}
-          <TabsContent value="history" className="pt-6">
-            <div className="bg-[#0a1e29] rounded-lg p-6">
-              <h3 className="text-xl font-bold mb-6">Booking History</h3>
+            {/* Booking History Tab */}
+            <TabsContent value="history" className="pt-6">
+              <div className="bg-[#0a1e29] rounded-lg p-6">
+                <h3 className="text-xl font-bold mb-6">Booking History</h3>
 
-              {bookings.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#1a3a4a]">
-                        <th className="text-left py-3 px-4">Flight</th>
-                        <th className="text-left py-3 px-4">Route</th>
-                        <th className="text-left py-3 px-4">Date</th>
-                        <th className="text-left py-3 px-4">Status</th>
-                        <th className="text-left py-3 px-4">Price</th>
-                        <th className="text-left py-3 px-4">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.map((booking) => (
-                        <tr key={booking.id} className="border-b border-[#1a3a4a]">
-                          <td className="py-4 px-4">
-                            <div className="flex items-center">
-                              <Plane className="mr-2 h-4 w-4 text-[#9b6a4f]" />
-                              {booking.flightNumber}
-                            </div>
-                          </td>
-                          <td className="py-4 px-4">
-                            {booking.departureAirport} → {booking.arrivalAirport}
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="flex items-center">
-                              <Calendar className="mr-2 h-4 w-4 text-[#9b6a4f]" />
-                              {booking.departureDate}
-                            </div>
-                          </td>
-                          <td className="py-4 px-4">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${
-                                booking.status === "Confirmed"
-                                  ? "bg-green-500/20 text-green-500"
-                                  : booking.status === "Cancelled"
-                                    ? "bg-red-500/20 text-red-500"
-                                    : "bg-yellow-500/20 text-yellow-500"
-                              }`}
-                            >
-                              {booking.status}
-                            </span>
-                          </td>
-                          <td className="py-4 px-4">{booking.price.toLocaleString()} VND</td>
-                          <td className="py-4 px-4">
-                            <Button variant="outline" size="sm" className="border-[#9b6a4f] text-[#9b6a4f]">
-                              View Details
-                            </Button>
-                          </td>
+                {bookings.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-[#1a3a4a]">
+                          <th className="text-left py-3 px-4">Flight</th>
+                          <th className="text-left py-3 px-4">Route</th>
+                          <th className="text-left py-3 px-4">Date</th>
+                          <th className="text-left py-3 px-4">Status</th>
+                          <th className="text-left py-3 px-4">Price</th>
+                          <th className="text-left py-3 px-4">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-12 bg-[#0f2d3c] rounded-lg">
-                  <div className="mb-4">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="48"
-                      height="48"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="mx-auto text-gray-500"
-                    >
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
+                      </thead>
+                      <tbody>
+                        {bookings.map((booking) => (
+                          <tr key={booking.id} className="border-b border-[#1a3a4a]">
+                            <td className="py-4 px-4">
+                              <div className="flex items-center">
+                                <Plane className="mr-2 h-4 w-4 text-[#9b6a4f]" />
+                                {booking.flightNumber}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              {booking.departureAirport} → {booking.arrivalAirport}
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex items-center">
+                                <Calendar className="mr-2 h-4 w-4 text-[#9b6a4f]" />
+                                {booking.departureDate}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs ${
+                                  booking.status === "Confirmed"
+                                    ? "bg-green-500/20 text-green-500"
+                                    : booking.status === "Cancelled"
+                                      ? "bg-red-500/20 text-red-500"
+                                      : "bg-yellow-500/20 text-yellow-500"
+                                }`}
+                              >
+                                {booking.status}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4">{booking.price.toLocaleString()} VND</td>
+                            <td className="py-4 px-4">
+                              <Button variant="outline" size="sm" className="border-[#9b6a4f] text-[#9b6a4f]">
+                                View Details
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <h4 className="text-xl font-bold mb-2">No Bookings Found</h4>
-                  <p className="text-gray-400 mb-6">You don't have any bookings in our system yet.</p>
-                  <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90">Book Your First Flight</Button>
-                </div>
-              )}
-            </div>
-          </TabsContent>
+                ) : (
+                  <div className="text-center py-12 bg-[#0f2d3c] rounded-lg">
+                    <div className="mb-4">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="48"
+                        height="48"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="mx-auto text-gray-500"
+                      >
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </div>
+                    <h4 className="text-xl font-bold mb-2">No Bookings Found</h4>
+                    <p className="text-gray-400 mb-6">You don't have any bookings in our system yet.</p>
+                    <Link href="/">
+                      <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90">Book Your First Flight</Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </div>
         </Tabs>
       </main>
     </div>

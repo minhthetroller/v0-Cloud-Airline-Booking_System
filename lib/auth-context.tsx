@@ -32,6 +32,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        setLoading(true)
+
         // Get session token from cookie
         const sessionToken = getCookie("session_token")
 
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (new Date(sessionData.expires) < new Date()) {
           // Session expired, delete it
           await supabaseClient.from("sessions").delete().eq("token", sessionToken)
+
           deleteCookie("session_token")
           setUser(null)
           setIsAuthenticated(false)
@@ -104,17 +107,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check auth on initial load
     checkAuth()
 
-    // Add event listener for route changes to recheck auth
-    const handleRouteChange = () => {
-      checkAuth()
-    }
+    // Set up interval to periodically check auth (every 5 minutes)
+    const interval = setInterval(checkAuth, 5 * 60 * 1000)
 
-    window.addEventListener("popstate", handleRouteChange)
-
-    // Clean up
-    return () => {
-      window.removeEventListener("popstate", handleRouteChange)
-    }
+    // Clean up interval
+    return () => clearInterval(interval)
   }, [])
 
   const signIn = async (email: string, password: string) => {

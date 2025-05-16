@@ -19,7 +19,6 @@ interface ContactInformation {
   address: string
   city: string
   country: string
-  postalCode: string
   sameAsPassenger: boolean
 }
 
@@ -32,7 +31,6 @@ export default function ContactInformationPage() {
     address: "",
     city: "",
     country: "",
-    postalCode: "",
     sameAsPassenger: false,
   })
   const [errors, setErrors] = useState<Partial<ContactInformation>>({})
@@ -127,12 +125,12 @@ export default function ContactInformationPage() {
         .from("customers")
         .update({
           contactname: contactInfo.contactName,
-          contactemail: contactInfo.contactEmail,
-          contactphone: contactInfo.contactPhone,
-          address: contactInfo.address,
+          contactemail: contactInfo.contactEmail, // Using the correct column name
+          contactphone: contactInfo.contactPhone, // Using the correct column name
+          addressline: contactInfo.address, // Using the correct column name
           city: contactInfo.city,
           country: contactInfo.country,
-          postalcode: contactInfo.postalCode,
+          // Removed postalcode field
         })
         .eq("customerid", customerId)
 
@@ -229,7 +227,7 @@ export default function ContactInformationPage() {
                 {errors.address && <p className="text-red-500 text-sm">{errors.address}</p>}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>
                   <Input
@@ -253,18 +251,6 @@ export default function ContactInformationPage() {
                     className={errors.country ? "border-red-500" : ""}
                   />
                   {errors.country && <p className="text-red-500 text-sm">{errors.country}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal Code</Label>
-                  <Input
-                    id="postalCode"
-                    name="postalCode"
-                    value={contactInfo.postalCode}
-                    onChange={handleChange}
-                    placeholder="Enter postal code"
-                    className={errors.postalCode ? "border-red-500" : ""}
-                  />
-                  {errors.postalCode && <p className="text-red-500 text-sm">{errors.postalCode}</p>}
                 </div>
               </div>
 

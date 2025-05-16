@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChevronRight, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import supabaseClient from "@/lib/supabase"
 
 interface GuestInformation {
@@ -21,6 +22,8 @@ interface GuestInformation {
   nationality: string
   passportNumber: string
   passportExpiry: string
+  identityCardNumber: string
+  pronoun: string
 }
 
 export default function GuestInformationPage() {
@@ -34,6 +37,8 @@ export default function GuestInformationPage() {
     nationality: "",
     passportNumber: "",
     passportExpiry: "",
+    identityCardNumber: "",
+    pronoun: "Mr.",
   })
   const [errors, setErrors] = useState<Partial<GuestInformation>>({})
   const [loading, setLoading] = useState(false)
@@ -49,14 +54,35 @@ export default function GuestInformationPage() {
     }
   }
 
+  const handleSelectChange = (name: string, value: string) => {
+    setGuestInfo((prev) => ({ ...prev, [name]: value }))
+
+    // Clear error for this field when user selects
+    if (errors[name as keyof GuestInformation]) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }))
+    }
+  }
+
   const validateForm = (): boolean => {
     const newErrors: Partial<GuestInformation> = {}
     let isValid = true
 
-    // Required fields
-    Object.entries(guestInfo).forEach(([key, value]) => {
-      if (!value.trim()) {
-        newErrors[key as keyof GuestInformation] = "This field is required"
+    // Required fields (excluding identityCardNumber which is optional)
+    const requiredFields: (keyof GuestInformation)[] = [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "dateOfBirth",
+      "nationality",
+      "passportNumber",
+      "passportExpiry",
+      "pronoun",
+    ]
+
+    requiredFields.forEach((field) => {
+      if (!guestInfo[field]?.trim()) {
+        newErrors[field] = "This field is required"
         isValid = false
       }
     })
@@ -118,17 +144,29 @@ export default function GuestInformationPage() {
           firstname: guestInfo.firstName,
           lastname: guestInfo.lastName,
           email: guestInfo.email,
-          phone: guestInfo.phone,
+          phonenumber: guestInfo.phone,
           dateofbirth: guestInfo.dateOfBirth,
           nationality: guestInfo.nationality,
           passportnumber: guestInfo.passportNumber,
           passportexpiry: guestInfo.passportExpiry,
-          isguest: true,
+          // Only include identitycardnumber if it's provided
+          ...(guestInfo.identityCardNumber ? { identitycardnumber: guestInfo.identityCardNumber } : {}),
+          pronoun: guestInfo.pronoun,
+          // Add default values for required fields that aren't in the form
+          gender: "Not specified",
+          country: guestInfo.nationality, // Use nationality as default country
+          city: "Not specified",
         })
         .select("customerid")
         .single()
 
       if (customerError) {
+        // Check for duplicate email error
+        if (customerError.message.includes("duplicate key") && customerError.message.includes("email")) {
+          throw new Error(
+            "This email address is already registered. Please use a different email or log in to your account.",
+          )
+        }
         throw new Error(customerError.message)
       }
 
@@ -161,6 +199,23 @@ export default function GuestInformationPage() {
               </Alert>
             )}
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="pronoun">Title</Label>
+                <Select value={guestInfo.pronoun} onValueChange={(value) => handleSelectChange("pronoun", value)}>
+                  <SelectTrigger className={errors.pronoun ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select a title" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Mr.">Mr.</SelectItem>
+                    <SelectItem value="Mrs.">Mrs.</SelectItem>
+                    <SelectItem value="Ms.">Ms.</SelectItem>
+                    <SelectItem value="Dr.">Dr.</SelectItem>
+                    <SelectItem value="Prof.">Prof.</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.pronoun && <p className="text-red-500 text-sm">{errors.pronoun}</p>}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First Name</Label>
@@ -245,7 +300,9 @@ export default function GuestInformationPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="passportNumber">Passport Number</Label>
+                  <Label htmlFor="passportNumber">
+                    Passport Number <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="passportNumber"
                     name="passportNumber"
@@ -268,6 +325,22 @@ export default function GuestInformationPage() {
                   />
                   {errors.passportExpiry && <p className="text-red-500 text-sm">{errors.passportExpiry}</p>}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="identityCardNumber">
+                  Identity Card Number <span className="text-gray-400 text-sm">(Optional)</span>
+                </Label>
+                <Input
+                  id="identityCardNumber"
+                  name="identityCardNumber"
+                  value={guestInfo.identityCardNumber}
+                  onChange={handleChange}
+                  placeholder="Enter identity card number (if applicable)"
+                  className={errors.identityCardNumber ? "border-red-500" : ""}
+                />
+                {errors.identityCardNumber && <p className="text-red-500 text-sm">{errors.identityCardNumber}</p>}
+                <p className="text-gray-400 text-xs">Not required for children under 14 years old</p>
               </div>
 
               <CardFooter className="flex justify-between pt-6 px-0">

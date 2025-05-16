@@ -108,8 +108,8 @@ export default function DefaultSeatMap({ onSelectSeat, selectedSeat, userClassId
     const classId = getSeatClass(row)
 
     // Check if user is trying to select a seat with a higher class than their ticket
-    if (classId < (userClassId || 1)) {
-      // Lower class ID means higher class (e.g., First Class is 1, Economy is 5)
+    // Higher classId means higher class (e.g., First Class is 5, Economy Saver is 1)
+    if (classId > (userClassId || 1)) {
       const seat = {
         seatid: Math.floor(Math.random() * 1000), // Generate a random ID
         seatnumber: seatNumber,
