@@ -294,12 +294,13 @@ export default function GuestInformationPage() {
 
       // Create a booking record immediately
       const bookingReference = generateBookingReference()
+      const totalPrice = calculateInitialPrice() // Add this function
       const { data: bookingData, error: bookingError } = await supabaseClient
         .from("bookings")
         .insert({
           bookingdatetime: new Date().toISOString(),
           bookingstatus: "Pending",
-          totalprice: 0, // Will be updated in confirmation page
+          totalprice: totalPrice,
           currencycode: "VND",
           bookingreference: bookingReference,
           userid: null, // Will be updated if user is logged in
@@ -345,6 +346,33 @@ export default function GuestInformationPage() {
       result += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return result
+  }
+
+  const calculateInitialPrice = () => {
+    // Get flight prices from session storage
+    const departureFlight = JSON.parse(sessionStorage.getItem("selectedDepartureFlight") || "null")
+    const returnFlight = JSON.parse(sessionStorage.getItem("selectedReturnFlight") || "null")
+
+    let total = 0
+    if (departureFlight && typeof departureFlight.price === "number") {
+      total += departureFlight.price
+    }
+    if (returnFlight && typeof returnFlight.price === "number") {
+      total += returnFlight.price
+    }
+
+    // Multiply by number of passengers
+    const passengerCount = Math.max(totalPassengers, 1)
+    total = total * passengerCount
+
+    // Ensure we have a valid number
+    if (isNaN(total) || total <= 0) {
+      console.warn("Invalid initial price calculated, using default price")
+      total = 1500000 // Default price if calculation fails
+    }
+
+    console.log("Calculated initial price:", total, "for", passengerCount, "passengers")
+    return total
   }
 
   return (

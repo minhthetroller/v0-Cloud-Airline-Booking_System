@@ -172,21 +172,27 @@ export default function ConfirmationPage() {
         // Load contact information
         const contactData = sessionStorage.getItem("contactInformation")
         if (contactData) {
-          const parsedContact = JSON.parse(contactData)
-          setContactInfo(parsedContact)
+          try {
+            const parsedContact = JSON.parse(contactData)
+            setContactInfo(parsedContact)
+            console.log("Loaded contact information:", parsedContact)
+          } catch (err) {
+            console.error("Error parsing contact information:", err)
+          }
         } else {
           // If no contact info, try to use primary passenger info
           if (parsedPassengers.length > 0) {
             const primaryPassenger = parsedPassengers.find((p) => p.isPrimary) || parsedPassengers[0]
             if (primaryPassenger) {
               const defaultContact = {
-                firstName: primaryPassenger.firstName,
-                lastName: primaryPassenger.lastName,
+                firstName: primaryPassenger.firstName || "",
+                lastName: primaryPassenger.lastName || "",
                 email: primaryPassenger.email || (loggedIn ? email : ""),
                 phone: primaryPassenger.phone || "",
               }
               setContactInfo(defaultContact)
               sessionStorage.setItem("contactInformation", JSON.stringify(defaultContact))
+              console.log("Created default contact information from passenger:", defaultContact)
             }
           }
         }
@@ -331,16 +337,22 @@ export default function ConfirmationPage() {
 
   // Calculate total price - Fixed to properly calculate the total price
   const calculateTotalPrice = () => {
+    console.log("Calculating total price with:", {
+      departureFlight: departureFlight ? { price: departureFlight.price } : null,
+      returnFlight: returnFlight ? { price: returnFlight.price } : null,
+      passengers: passengers.length,
+    })
+
     let total = 0
-    if (departureFlight) {
-      total += departureFlight.price || 0
+    if (departureFlight && typeof departureFlight.price === "number") {
+      total += departureFlight.price
     }
-    if (returnFlight) {
-      total += returnFlight.price || 0
+    if (returnFlight && typeof returnFlight.price === "number") {
+      total += returnFlight.price
     }
 
     // Multiply by number of passengers
-    const passengerCount = passengers.length || 1
+    const passengerCount = Math.max(passengers.length, 1)
     total = total * passengerCount
 
     // Ensure we have a valid number
@@ -909,7 +921,13 @@ export default function ConfirmationPage() {
                 <p className="font-medium">Class</p>
                 <p>{departureFlight.fareType}</p>
                 <p className="font-medium mt-2">Seat</p>
-                <p>{departureSeat?.seatnumber || "Not selected"}</p>
+                <p>
+                  {departureSeat
+                    ? typeof departureSeat.seatnumber === "string"
+                      ? departureSeat.seatnumber
+                      : `Seat ID: ${departureSeat.seatid}`
+                    : "Not selected"}
+                </p>
                 <p className="font-medium mt-2">Price</p>
                 <p>{formatCurrency(departureFlight.price)} VND</p>
               </div>

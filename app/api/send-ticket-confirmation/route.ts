@@ -14,6 +14,7 @@ export async function POST(request: Request) {
 
     // Validate email format
     if (!email.includes("@") || !email.includes(".")) {
+      console.error("Invalid email format:", email)
       return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
     }
 
@@ -21,17 +22,18 @@ export async function POST(request: Request) {
 
     // Format flight details for email
     const flightDetails = tickets.map((ticket: any) => {
-      const flight = ticket.flights
+      const flight = ticket.flights || {}
+      const passenger = ticket.passengers || {}
+      const seat = ticket.seats || {}
+
       return {
-        flightNumber: flight.flightnumber,
-        departure: flight.departureairport,
-        arrival: flight.arrivalairport,
-        departureTime: new Date(flight.departuretime).toLocaleString(),
-        ticketNumber: ticket.ticketnumber,
-        seatNumber: ticket.seatid, // Ideally, we'd join with the seats table to get the actual seat number
-        passengerName: ticket.passengers
-          ? `${ticket.passengers.firstname || ""} ${ticket.passengers.lastname || ""}`
-          : "Passenger",
+        flightNumber: flight.flightnumber || "Unknown",
+        departure: flight.departureairport || "Unknown",
+        arrival: flight.arrivalairport || "Unknown",
+        departureTime: flight.departuretime ? new Date(flight.departuretime).toLocaleString() : "Unknown",
+        ticketNumber: ticket.ticketnumber || "Unknown",
+        seatNumber: seat.seatnumber || `Seat ID: ${ticket.seatid || "Unknown"}`,
+        passengerName: `${passenger.firstname || ""} ${passenger.lastname || ""}`.trim() || "Passenger",
       }
     })
 
@@ -136,7 +138,7 @@ export async function POST(request: Request) {
     const { data, error } = await resend.emails.send({
       from: "Cloud Airline <noreply@cloud-airlines.space>",
       to: email,
-      subject: `Your Booking Confirmation - ${booking.bookingreference}`,
+      subject: `Your Booking Confirmation - ${booking.bookingreference || "Booking"}`,
       html: htmlContent,
     })
 
@@ -145,6 +147,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    console.log("Email sent successfully to:", email)
     return NextResponse.json({ success: true, data })
   } catch (error: any) {
     console.error("Error sending email:", error)

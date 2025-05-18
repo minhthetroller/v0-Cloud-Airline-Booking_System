@@ -31,52 +31,160 @@ export default function TicketConfirmationPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [contactEmail, setContactEmail] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchTicketDetails = async () => {
-      try {
-        setLoading(true)
+  const fetchTicketDetails = async () => {
+    try {
+      setLoading(true)
 
-        // Get booking ID from session storage
-        const storedBookingId = sessionStorage.getItem("bookingId")
-        const storedBookingReference = sessionStorage.getItem("bookingReference")
-        const storedContactEmail = sessionStorage.getItem("contactEmail")
+      // Get booking ID from session storage
+      const storedBookingId = sessionStorage.getItem("bookingId")
+      const storedBookingReference = sessionStorage.getItem("bookingReference")
+      const storedContactEmail = sessionStorage.getItem("contactEmail")
 
-        if (!storedBookingId) {
-          throw new Error("Booking ID not found")
-        }
-
-        setBookingId(storedBookingId)
-        setBookingReference(storedBookingReference)
-        setContactEmail(storedContactEmail)
-
-        console.log("Fetching tickets for booking ID:", storedBookingId)
-
-        // Fetch tickets with related data
-        const { data: ticketsData, error: ticketsError } = await supabaseClient
-          .from("tickets")
-          .select(`
-            *,
-            flights(*),
-            passengers(*),
-            seats(*)
-          `)
-          .eq("bookingid", storedBookingId)
-
-        if (ticketsError) {
-          console.error("Error fetching tickets:", ticketsError)
-          throw new Error(`Error fetching tickets: ${ticketsError.message}`)
-        }
-
-        console.log("Tickets data:", ticketsData)
-        setTickets(ticketsData || [])
-      } catch (err: any) {
-        console.error("Error fetching ticket details:", err)
-        setError(err.message || "Failed to load ticket details")
-      } finally {
-        setLoading(false)
+      if (!storedBookingId) {
+        throw new Error("Booking ID not found")
       }
-    }
 
+      setBookingId(storedBookingId)
+      setBookingReference(storedBookingReference)
+      setContactEmail(storedContactEmail)
+
+      console.log("Fetching tickets for booking ID:", storedBookingId)
+
+      // Fetch tickets with related data
+      const { data: ticketsData, error: ticketsError } = await supabaseClient
+        .from("tickets")
+        .select(`
+          *,
+          flights(*),
+          passengers(*),
+          seats(*)
+        `)
+        .eq("bookingid", storedBookingId)
+
+      if (ticketsError) {
+        console.error("Error fetching tickets:", ticketsError)
+        throw new Error(`Error fetching tickets: ${ticketsError.message}`)
+      }
+
+      console.log("Tickets data:", ticketsData)
+
+      if (!ticketsData || ticketsData.length === 0) {
+        console.warn("No tickets found for booking ID:", storedBookingId)
+
+        // Try to create tickets if none exist
+        const success = await createTicketsForBooking(storedBookingId)
+        if (success) {
+          // Fetch tickets again after creation
+          const { data: newTicketsData, error: newTicketsError } = await supabaseClient
+            .from("tickets")
+            .select(`
+              *,
+              flights(*),
+              passengers(*),
+              seats(*)
+            `)
+            .eq("bookingid", storedBookingId)
+
+          if (newTicketsError) {
+            console.error("Error fetching new tickets:", newTicketsError)
+          } else if (newTicketsData && newTicketsData.length > 0) {
+            console.log("Successfully created and fetched tickets:", newTicketsData)
+            setTickets(newTicketsData)
+          }
+        }
+      } else {
+        setTickets(ticketsData)
+      }
+    } catch (err: any) {
+      console.error("Error fetching ticket details:", err)
+      setError(err.message || "Failed to load ticket details")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Add a new function to create tickets if they don't exist
+  const createTicketsForBooking = async (bookingId: string): Promise<boolean> => {
+    try {
+      console.log("Attempting to create tickets for booking:", bookingId)
+
+      // Get passenger records for this booking
+      const { data: passengerData, error: passengerError } = await supabaseClient
+        .from("passengers")
+        .select("*")
+        .eq("bookingid", bookingId)
+
+      if (passengerError || !passengerData || passengerData.length === 0) {
+        console.error("No passengers found for booking:", bookingId)
+        return false
+      }
+
+      // Get flight information from session storage
+      const departureFlight = JSON.parse(sessionStorage.getItem("selectedDepartureFlight") || "null")
+      const returnFlight = JSON.parse(sessionStorage.getItem("selectedReturnFlight") || "null")
+      const departureSeat = JSON.parse(sessionStorage.getItem("selectedDepartureSeat") || "null")
+      const returnSeat = JSON.parse(sessionStorage.getItem("selectedReturnSeat") || "null")
+
+      if (!departureFlight || !departureSeat) {
+        console.error("Missing flight or seat information")
+        return false
+      }
+
+      // Create tickets for each passenger
+      for (const passenger of passengerData) {
+        // Create departure ticket
+        const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
+          bookingid: bookingId,
+          flightid: departureFlight.flightId,
+          passengerid: passenger.passengerid,
+          seatid: departureSeat.seatid,
+          status: "Confirmed",
+          ticketprice: departureFlight.price || 0,
+          classid: departureSeat.classid || 1,
+          ticketnumber: generateTicketNumber(),
+        })
+
+        if (departureTicketError) {
+          console.error("Error creating departure ticket:", departureTicketError)
+          continue
+        }
+
+        // Create return ticket if applicable
+        if (returnFlight && returnSeat) {
+          const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
+            bookingid: bookingId,
+            flightid: returnFlight.flightId,
+            passengerid: passenger.passengerid,
+            seatid: returnSeat.seatid,
+            status: "Confirmed",
+            ticketprice: returnFlight.price || 0,
+            classid: returnSeat.classid || 1,
+            ticketnumber: generateTicketNumber(),
+          })
+
+          if (returnTicketError) {
+            console.error("Error creating return ticket:", returnTicketError)
+          }
+        }
+      }
+
+      return true
+    } catch (err) {
+      console.error("Error creating tickets:", err)
+      return false
+    }
+  }
+
+  // Add the generateTicketNumber function
+  const generateTicketNumber = () => {
+    const prefix = "CA"
+    const randomDigits = Math.floor(Math.random() * 10000000)
+      .toString()
+      .padStart(7, "0")
+    return `${prefix}${randomDigits}`
+  }
+
+  useEffect(() => {
     fetchTicketDetails()
   }, [])
 
@@ -187,7 +295,13 @@ export default function TicketConfirmationPage() {
                     </div>
                     <div>
                       <p className="font-medium">Seat</p>
-                      <p>{ticket.seats?.seatnumber || ticket.seatid}</p>
+                      <p>
+                        {ticket.seats
+                          ? ticket.seats.seatnumber
+                          : typeof ticket.seatid === "number"
+                            ? `Seat ID: ${ticket.seatid}`
+                            : "Unknown"}
+                      </p>
                     </div>
                   </div>
 

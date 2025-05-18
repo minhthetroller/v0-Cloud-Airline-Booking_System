@@ -350,6 +350,17 @@ export default function SeatSelectionPage() {
       // Store the selected seats in session storage
       sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
 
+      // Also store the first seat for backward compatibility
+      if (updatedSelectedSeats.length > 0) {
+        const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
+        if (firstSeatObj) {
+          sessionStorage.setItem(
+            `selected${activeFlightType.charAt(0).toUpperCase() + activeFlightType.slice(1)}Seat`,
+            JSON.stringify(firstSeatObj),
+          )
+        }
+      }
+
       // Move to next passenger if not the last one
       if (currentPassengerIndex < totalPassengers - 1) {
         setCurrentPassengerIndex(currentPassengerIndex + 1)
@@ -669,6 +680,13 @@ export default function SeatSelectionPage() {
         JSON.stringify(seats.find((s) => s.seatid === departureSelectedSeats[0].seatid) || null),
       )
       sessionStorage.setItem("selectedSeats_departure", JSON.stringify(departureSelectedSeats))
+
+      // Store all departure seats in a format that confirmation page can use
+      const allDepartureSeats = departureSelectedSeats.map((seat) => {
+        const seatObj = seats.find((s) => s.seatid === seat.seatid)
+        return seatObj || seat
+      })
+      sessionStorage.setItem("allDepartureSeats", JSON.stringify(allDepartureSeats))
     }
 
     if (returnSelectedSeats.length > 0) {
@@ -677,6 +695,13 @@ export default function SeatSelectionPage() {
         JSON.stringify(seats.find((s) => s.seatid === returnSelectedSeats[0].seatid) || null),
       )
       sessionStorage.setItem("selectedSeats_return", JSON.stringify(returnSelectedSeats))
+
+      // Store all return seats in a format that confirmation page can use
+      const allReturnSeats = returnSelectedSeats.map((seat) => {
+        const seatObj = seats.find((s) => s.seatid === seat.seatid)
+        return seatObj || seat
+      })
+      sessionStorage.setItem("allReturnSeats", JSON.stringify(allReturnSeats))
     }
 
     // Store total number of passengers

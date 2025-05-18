@@ -164,6 +164,12 @@ export default function PaymentPage() {
         return
       }
 
+      // Validate email format
+      if (!contactEmail.includes("@") || !contactEmail.includes(".")) {
+        console.error("Invalid email format:", contactEmail)
+        return
+      }
+
       console.log("Sending confirmation email to:", contactEmail)
 
       // Get booking details
@@ -182,10 +188,11 @@ export default function PaymentPage() {
       const { data: ticketsData, error: ticketsError } = await supabaseClient
         .from("tickets")
         .select(`
-          *,
-          flights(*),
-          passengers(*)
-        `)
+        *,
+        flights(*),
+        passengers(*),
+        seats(*)
+      `)
         .eq("bookingid", bookingId)
 
       if (ticketsError) {
@@ -193,7 +200,32 @@ export default function PaymentPage() {
         return
       }
 
+      if (!ticketsData || ticketsData.length === 0) {
+        console.error("No tickets found for booking:", bookingId)
+        return
+      }
+
       console.log("Tickets data for email:", ticketsData)
+
+      // Process tickets to ensure they have all required data
+      const processedTickets = ticketsData.map((ticket) => {
+        // Ensure passengers data is available
+        if (!ticket.passengers) {
+          ticket.passengers = { firstname: "Passenger", lastname: "" }
+        }
+
+        // Ensure flights data is available
+        if (!ticket.flights) {
+          ticket.flights = {
+            flightnumber: "Unknown",
+            departureairport: "Unknown",
+            arrivalairport: "Unknown",
+            departuretime: new Date().toISOString(),
+          }
+        }
+
+        return ticket
+      })
 
       // Send email using our API route
       const response = await fetch("/api/send-ticket-confirmation", {
@@ -204,7 +236,7 @@ export default function PaymentPage() {
         body: JSON.stringify({
           email: contactEmail,
           booking: bookingData,
-          tickets: ticketsData,
+          tickets: processedTickets,
         }),
       })
 
