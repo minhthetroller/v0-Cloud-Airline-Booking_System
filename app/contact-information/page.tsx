@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import supabaseClient from "@/lib/supabase"
 
@@ -36,14 +36,20 @@ export default function ContactInformationPage() {
   const [errors, setErrors] = useState<Partial<ContactInformation>>({})
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState<string | null>(null)
-  const [guestInfo, setGuestInfo] = useState<any>(null)
+  const [primaryPassenger, setPrimaryPassenger] = useState<any>(null)
 
   useEffect(() => {
-    // Load guest information from session storage
-    const storedGuestInfo = sessionStorage.getItem("guestInformation")
-    if (storedGuestInfo) {
-      const parsedGuestInfo = JSON.parse(storedGuestInfo)
-      setGuestInfo(parsedGuestInfo)
+    // Load primary passenger information from session storage
+    const storedPassengers = sessionStorage.getItem("passengers")
+    if (storedPassengers) {
+      try {
+        const parsedPassengers = JSON.parse(storedPassengers)
+        if (Array.isArray(parsedPassengers) && parsedPassengers.length > 0) {
+          setPrimaryPassenger(parsedPassengers[0])
+        }
+      } catch (e) {
+        console.error("Error parsing passengers from session storage:", e)
+      }
     }
   }, [])
 
@@ -60,13 +66,13 @@ export default function ContactInformationPage() {
   const handleCheckboxChange = (checked: boolean) => {
     setContactInfo((prev) => ({ ...prev, sameAsPassenger: checked }))
 
-    if (checked && guestInfo) {
-      // Fill contact information with passenger information
+    if (checked && primaryPassenger) {
+      // Fill contact information with primary passenger information
       setContactInfo((prev) => ({
         ...prev,
-        contactName: `${guestInfo.firstName} ${guestInfo.lastName}`,
-        contactEmail: guestInfo.email,
-        contactPhone: guestInfo.phone,
+        contactName: `${primaryPassenger.firstName} ${primaryPassenger.lastName}`,
+        contactEmail: primaryPassenger.email,
+        contactPhone: primaryPassenger.phone,
       }))
     }
   }
@@ -114,32 +120,38 @@ export default function ContactInformationPage() {
       // Store contact information in session storage
       sessionStorage.setItem("contactInformation", JSON.stringify(contactInfo))
 
-      // Update customer record with contact information
-      const customerId = sessionStorage.getItem("customerId")
-
-      if (!customerId) {
-        throw new Error("Customer ID not found")
+      // Get customer IDs from session storage
+      const customerIdsStr = sessionStorage.getItem("customerIds")
+      if (!customerIdsStr) {
+        throw new Error("Customer IDs not found")
       }
+
+      const customerIds = JSON.parse(customerIdsStr)
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        throw new Error("Invalid customer IDs")
+      }
+
+      // Update primary customer record with contact information
+      const primaryCustomerId = customerIds[0]
 
       const { error: updateError } = await supabaseClient
         .from("customers")
         .update({
           contactname: contactInfo.contactName,
-          contactemail: contactInfo.contactEmail, // Using the correct column name
-          contactphone: contactInfo.contactPhone, // Using the correct column name
-          addressline: contactInfo.address, // Using the correct column name
+          contactemail: contactInfo.contactEmail,
+          contactphone: contactInfo.contactPhone,
+          addressline: contactInfo.address,
           city: contactInfo.city,
           country: contactInfo.country,
-          // Removed postalcode field
         })
-        .eq("customerid", customerId)
+        .eq("customerid", primaryCustomerId)
 
       if (updateError) {
         throw new Error(updateError.message)
       }
 
-      // Redirect to payment page
-      router.push("/payment")
+      // Redirect to confirmation page instead of payment
+      router.push("/confirmation")
     } catch (err: any) {
       console.error("Error saving contact information:", err)
       setGeneralError(err.message || "Failed to save your information. Please try again.")
@@ -150,7 +162,49 @@ export default function ContactInformationPage() {
 
   return (
     <main className="min-h-screen bg-[#0f2d3c] py-8">
-      <div className="container mx-auto px-4">
+      {/* Full width progress bar */}
+      <div className="w-full bg-[#1a3a4a] py-4">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between w-full">
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                1
+              </div>
+              <span className="text-xs text-white mt-1">Passenger</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+                2
+              </div>
+              <span className="text-xs text-white mt-1">Contact</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                3
+              </div>
+              <span className="text-xs text-white mt-1">Confirmation</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                4
+              </div>
+              <span className="text-xs text-white mt-1">Payment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 mt-6">
+        <div className="flex items-center max-w-2xl mx-auto mb-6">
+          <button onClick={() => router.back()} className="mr-4 text-white hover:text-gray-300 transition-colors">
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-2xl font-bold text-white">Contact Information</h1>
+        </div>
+
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Contact Information</CardTitle>
@@ -170,7 +224,7 @@ export default function ContactInformationPage() {
                   checked={contactInfo.sameAsPassenger}
                   onCheckedChange={handleCheckboxChange}
                 />
-                <Label htmlFor="sameAsPassenger">Same as passenger information</Label>
+                <Label htmlFor="sameAsPassenger">Same as primary passenger information</Label>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -260,7 +314,7 @@ export default function ContactInformationPage() {
                   disabled={loading}
                   className="bg-[#1a91d9] hover:bg-[#1678b6] text-white font-medium py-2 px-6 rounded-md transition-colors disabled:opacity-50"
                 >
-                  {loading ? "Saving..." : "Continue to Payment"}
+                  {loading ? "Saving..." : "Continue to Confirmation"}
                 </button>
               </div>
             </form>

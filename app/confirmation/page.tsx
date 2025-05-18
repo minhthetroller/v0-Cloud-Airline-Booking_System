@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ChevronRight, AlertCircle, Check, Printer } from "lucide-react"
+import { ChevronRight, AlertCircle, Check, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import supabaseClient from "@/lib/supabase"
@@ -27,13 +27,22 @@ interface Seat {
   seatnumber: string
   classid: number
   seattype: string
-  isoccupied?: boolean
 }
 
 interface CustomerInfo {
   name: string
   email: string
   phone: string
+  passportNumber?: string
+  identityCardNumber?: string
+}
+
+interface PassengerInfo {
+  firstName: string
+  lastName: string
+  passportNumber?: string
+  identityCardNumber?: string
+  isPrimary?: boolean
 }
 
 export default function ConfirmationPage() {
@@ -46,25 +55,56 @@ export default function ConfirmationPage() {
   const [returnSeat, setReturnSeat] = useState<Seat | null>(null)
   const [isRoundTrip, setIsRoundTrip] = useState(false)
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null)
+  const [passengers, setPassengers] = useState<PassengerInfo[]>([])
   const [bookingReference, setBookingReference] = useState<string>("")
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [customerId, setCustomerId] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [existingBookingId, setExistingBookingId] = useState<string | null>(null)
+  const [contactInfo, setContactInfo] = useState<any>(null)
+  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
+  const [bookingCreated, setBookingCreated] = useState(false)
+  const [dataLoaded, setDataLoaded] = useState(false)
 
   useEffect(() => {
     // Check if user is logged in
     const loggedIn = sessionStorage.getItem("isLoggedIn") === "true"
     const email = sessionStorage.getItem("userEmail")
     const customerIdFromSession = sessionStorage.getItem("customerId")
+    const userIdFromSession = sessionStorage.getItem("userId")
+    const bookingId = sessionStorage.getItem("bookingId")
+    const storedBookingReference = sessionStorage.getItem("bookingReference")
 
     setIsLoggedIn(loggedIn)
     setUserEmail(email)
     setCustomerId(customerIdFromSession)
+    setUserId(userIdFromSession)
+
+    // If there's an existing booking ID, store it
+    if (bookingId) {
+      setExistingBookingId(bookingId)
+      setBookingCreated(true)
+    }
+
+    // If there's an existing booking reference, use it
+    if (storedBookingReference) {
+      setBookingReference(storedBookingReference)
+    } else {
+      // Otherwise generate a new one
+      setBookingReference(generateBookingReference())
+    }
 
     // Load flight and seat details from session storage
     const loadBookingDetails = async () => {
       try {
         setLoading(true)
+        let parsedDepartureFlight = null
+        let parsedDepartureSeat = null
+        let parsedReturnFlight = null
+        let parsedReturnSeat = null
+        let parsedPassengers: PassengerInfo[] = []
+        let finalCustomerId = customerIdFromSession
 
         // Load flight details
         const departureFlightData = sessionStorage.getItem("selectedDepartureFlight")
@@ -74,11 +114,12 @@ export default function ConfirmationPage() {
           throw new Error("No departure flight selected")
         }
 
-        const parsedDepartureFlight = JSON.parse(departureFlightData)
+        parsedDepartureFlight = JSON.parse(departureFlightData)
         setDepartureFlight(parsedDepartureFlight)
 
         if (returnFlightData) {
-          setReturnFlight(JSON.parse(returnFlightData))
+          parsedReturnFlight = JSON.parse(returnFlightData)
+          setReturnFlight(parsedReturnFlight)
           setIsRoundTrip(true)
         }
 
@@ -90,24 +131,108 @@ export default function ConfirmationPage() {
           throw new Error("No departure seat selected")
         }
 
-        setDepartureSeat(JSON.parse(departureSeatData))
+        parsedDepartureSeat = JSON.parse(departureSeatData)
+        setDepartureSeat(parsedDepartureSeat)
 
         if (returnSeatData) {
-          setReturnSeat(JSON.parse(returnSeatData))
+          parsedReturnSeat = JSON.parse(returnSeatData)
+          setReturnSeat(parsedReturnSeat)
         }
 
-        // Generate a booking reference
-        setBookingReference(generateBookingReference())
+        // Load passenger information
+        const passengersData = sessionStorage.getItem("passengers")
+        if (passengersData) {
+          parsedPassengers = JSON.parse(passengersData)
 
-        // If logged in, fetch customer info
+          // Ensure at least one passenger is marked as primary
+          if (parsedPassengers.length > 0 && !parsedPassengers.some((p) => p.isPrimary)) {
+            parsedPassengers[0].isPrimary = true
+            sessionStorage.setItem("passengers", JSON.stringify(parsedPassengers))
+          }
+
+          setPassengers(parsedPassengers)
+        } else {
+          // Create a default passenger if none exists
+          const guestInfo = sessionStorage.getItem("guestInformation")
+          if (guestInfo) {
+            const parsedInfo = JSON.parse(guestInfo)
+            const defaultPassenger = {
+              firstName: parsedInfo.firstName || "",
+              lastName: parsedInfo.lastName || "",
+              passportNumber: parsedInfo.passportNumber || "",
+              identityCardNumber: parsedInfo.identityCardNumber || "",
+              isPrimary: true,
+            }
+            parsedPassengers = [defaultPassenger]
+            setPassengers(parsedPassengers)
+            sessionStorage.setItem("passengers", JSON.stringify(parsedPassengers))
+          }
+        }
+
+        // Load contact information
+        const contactData = sessionStorage.getItem("contactInformation")
+        if (contactData) {
+          const parsedContact = JSON.parse(contactData)
+          setContactInfo(parsedContact)
+        } else {
+          // If no contact info, try to use primary passenger info
+          if (parsedPassengers.length > 0) {
+            const primaryPassenger = parsedPassengers.find((p) => p.isPrimary) || parsedPassengers[0]
+            if (primaryPassenger) {
+              const defaultContact = {
+                firstName: primaryPassenger.firstName,
+                lastName: primaryPassenger.lastName,
+                email: primaryPassenger.email || (loggedIn ? email : ""),
+                phone: primaryPassenger.phone || "",
+              }
+              setContactInfo(defaultContact)
+              sessionStorage.setItem("contactInformation", JSON.stringify(defaultContact))
+            }
+          }
+        }
+
+        // If logged in, fetch customer info from database
         if (loggedIn && email) {
-          // In a real app, fetch customer info from database
-          // For now, use mock data
-          setCustomerInfo({
-            name: "John Doe",
-            email: email,
-            phone: "+1234567890",
-          })
+          try {
+            // Get user record from users table
+            const { data: userData, error: userError } = await supabaseClient
+              .from("users")
+              .select("*")
+              .eq("username", email)
+              .single()
+
+            if (userError) throw userError
+
+            // Get customer details
+            const { data: customerData, error: customerError } = await supabaseClient
+              .from("customers")
+              .select("*")
+              .eq("customerid", userData.customerid)
+              .single()
+
+            if (customerError) throw customerError
+
+            // Set customer info with actual data from database
+            setCustomerInfo({
+              name: `${customerData.firstname} ${customerData.lastname}`,
+              email: email,
+              phone: customerData.phonenumber || "N/A",
+            })
+
+            // Store customer ID for later use
+            finalCustomerId = customerData.customerid
+            setCustomerId(finalCustomerId)
+            sessionStorage.setItem("customerId", finalCustomerId)
+            setUserId(userData.userid)
+          } catch (err) {
+            console.error("Error fetching customer data:", err)
+            // Fallback to default info if database fetch fails
+            setCustomerInfo({
+              name: "User",
+              email: email,
+              phone: "N/A",
+            })
+          }
         } else {
           // For guest users, use data from session storage if available
           const guestInfo = sessionStorage.getItem("guestInformation")
@@ -116,8 +241,47 @@ export default function ConfirmationPage() {
             setCustomerInfo({
               name: `${parsedInfo.firstName} ${parsedInfo.lastName}`,
               email: parsedInfo.email,
-              phone: parsedInfo.phone,
+              phone: parsedInfo.phone || "N/A",
+              passportNumber: parsedInfo.passportNumber,
+              identityCardNumber: parsedInfo.identityCardNumber,
             })
+
+            // Create a customer record for the guest if we don't have one yet
+            if (!finalCustomerId) {
+              const newCustomerId = await createGuestCustomer(parsedInfo)
+              if (newCustomerId) {
+                finalCustomerId = newCustomerId
+              }
+            }
+          }
+        }
+
+        // Mark data as loaded
+        setDataLoaded(true)
+
+        // Create booking and passengers if not already created
+        if (
+          !bookingId &&
+          !bookingCreated &&
+          parsedDepartureFlight &&
+          parsedDepartureSeat &&
+          parsedPassengers.length > 0 &&
+          finalCustomerId
+        ) {
+          console.log("Creating booking during initial load")
+          const success = await createBookingAndPassengers(
+            parsedDepartureFlight,
+            parsedDepartureSeat,
+            parsedReturnFlight,
+            parsedReturnSeat,
+            parsedPassengers,
+            finalCustomerId,
+          )
+
+          if (success) {
+            console.log("Successfully created booking during initial load")
+          } else {
+            console.error("Failed to create booking during initial load")
           }
         }
       } catch (err: any) {
@@ -131,6 +295,233 @@ export default function ConfirmationPage() {
     loadBookingDetails()
   }, [])
 
+  // Create a customer record for a guest user
+  const createGuestCustomer = async (guestInfo: any) => {
+    try {
+      if (!guestInfo) return null
+
+      // Create a new customer record - REMOVED customertype field as it doesn't exist in the schema
+      const { data: newCustomer, error: customerError } = await supabaseClient
+        .from("customers")
+        .insert({
+          firstname: guestInfo.firstName || "",
+          lastname: guestInfo.lastName || "",
+          email: guestInfo.email || "",
+          phonenumber: guestInfo.phone || null,
+        })
+        .select("customerid")
+        .single()
+
+      if (customerError) {
+        console.error("Error creating customer:", customerError)
+        return null
+      }
+
+      // Store the customer ID
+      setCustomerId(newCustomer.customerid)
+      sessionStorage.setItem("customerId", newCustomer.customerid)
+      console.log("Created customer ID:", newCustomer.customerid)
+
+      return newCustomer.customerid
+    } catch (err) {
+      console.error("Error creating guest customer:", err)
+      return null
+    }
+  }
+
+  // Calculate total price - Fixed to properly calculate the total price
+  const calculateTotalPrice = () => {
+    let total = 0
+    if (departureFlight) {
+      total += departureFlight.price || 0
+    }
+    if (returnFlight) {
+      total += returnFlight.price || 0
+    }
+
+    // Multiply by number of passengers
+    const passengerCount = passengers.length || 1
+    total = total * passengerCount
+
+    // Ensure we have a valid number
+    if (isNaN(total) || total <= 0) {
+      console.warn("Invalid total price calculated, using default price")
+      total = 1500000 // Default price if calculation fails
+    }
+
+    console.log("Calculated total price:", total, "for", passengerCount, "passengers")
+    return total
+  }
+
+  // Create booking and passenger records when the page loads
+  const createBookingAndPassengers = async (
+    departureFlight: SelectedFlightDetails,
+    departureSeat: Seat,
+    returnFlight: SelectedFlightDetails | null,
+    returnSeat: Seat | null,
+    passengers: PassengerInfo[],
+    customerId: string,
+  ) => {
+    try {
+      console.log("Creating booking and passengers with:", {
+        departureFlight: !!departureFlight,
+        departureSeat: !!departureSeat,
+        returnFlight: !!returnFlight,
+        returnSeat: !!returnSeat,
+        passengers: passengers.length,
+        customerId: customerId,
+      })
+
+      if (!departureFlight || !departureSeat) {
+        throw new Error("Flight or seat information is missing")
+      }
+
+      if (!passengers || passengers.length === 0) {
+        throw new Error("Passenger information is missing")
+      }
+
+      if (!customerId) {
+        throw new Error("Customer ID is missing")
+      }
+
+      // Calculate the total price
+      const totalPrice = calculateTotalPrice()
+      console.log("Total price for booking:", totalPrice)
+
+      // Create booking record
+      const { data: bookingData, error: bookingError } = await supabaseClient
+        .from("bookings")
+        .insert({
+          bookingdatetime: new Date().toISOString(),
+          bookingstatus: "Confirmed",
+          totalprice: totalPrice,
+          currencycode: "VND",
+          bookingreference: bookingReference,
+          userid: isLoggedIn ? userId : null, // Set userid if logged in, otherwise null
+        })
+        .select("bookingid")
+        .single()
+
+      if (bookingError) {
+        console.error("Error creating booking:", bookingError)
+        throw new Error(`Error creating booking: ${bookingError.message}`)
+      }
+
+      if (!bookingData || !bookingData.bookingid) {
+        throw new Error("Failed to get booking ID after creation")
+      }
+
+      const bookingId = bookingData.bookingid
+      console.log("Created booking with ID:", bookingId)
+      setExistingBookingId(bookingId)
+      sessionStorage.setItem("bookingId", bookingId)
+      sessionStorage.setItem("bookingReference", bookingReference)
+
+      // Create passenger records for each passenger
+      for (const passenger of passengers) {
+        // Create passenger record
+        const { data: passengerData, error: passengerError } = await supabaseClient
+          .from("passengers")
+          .insert({
+            customerid: customerId,
+            bookingid: bookingId,
+            passengertype: "Adult", // Default to Adult
+            firstname: passenger.firstName,
+            lastname: passenger.lastName,
+            passportnumber: passenger.passportNumber,
+            identitycardnumber: passenger.identityCardNumber,
+          })
+          .select("passengerid")
+          .single()
+
+        if (passengerError) {
+          console.error("Error creating passenger:", passengerError)
+          throw new Error(`Error creating passenger: ${passengerError.message}`)
+        }
+
+        if (!passengerData || !passengerData.passengerid) {
+          throw new Error("Failed to get passenger ID after creation")
+        }
+
+        console.log("Created passenger with ID:", passengerData.passengerid)
+
+        // Create ticket for departure flight
+        const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
+          bookingid: bookingId,
+          flightid: departureFlight.flightId,
+          passengerid: passengerData.passengerid,
+          seatid: departureSeat.seatid,
+          status: "Confirmed", // Changed from ticketstatus to status
+          ticketprice: departureFlight.price,
+          classid: departureSeat.classid,
+          ticketnumber: generateTicketNumber(),
+        })
+
+        if (departureTicketError) {
+          console.error("Error creating departure ticket:", departureTicketError)
+          throw new Error(`Error creating departure ticket: ${departureTicketError.message}`)
+        }
+
+        // Update flightseatoccupancy for departure seat
+        const { error: departureOccupancyError } = await supabaseClient.from("flightseatoccupancy").upsert(
+          {
+            flightid: departureFlight.flightId,
+            seatid: departureSeat.seatid,
+            isoccupied: true,
+          },
+          { onConflict: "flightid,seatid" },
+        )
+
+        if (departureOccupancyError) {
+          console.error("Error updating departure seat occupancy:", departureOccupancyError)
+          throw new Error(`Error updating departure seat occupancy: ${departureOccupancyError.message}`)
+        }
+
+        // Create ticket for return flight if it exists
+        if (isRoundTrip && returnFlight && returnSeat) {
+          const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
+            bookingid: bookingId,
+            flightid: returnFlight.flightId,
+            passengerid: passengerData.passengerid,
+            seatid: returnSeat.seatid,
+            status: "Confirmed", // Changed from ticketstatus to status
+            ticketprice: returnFlight.price,
+            classid: returnSeat.classid,
+            ticketnumber: generateTicketNumber(),
+          })
+
+          if (returnTicketError) {
+            console.error("Error creating return ticket:", returnTicketError)
+            throw new Error(`Error creating return ticket: ${returnTicketError.message}`)
+          }
+
+          // Update flightseatoccupancy for return seat
+          const { error: returnOccupancyError } = await supabaseClient.from("flightseatoccupancy").upsert(
+            {
+              flightid: returnFlight.flightId,
+              seatid: returnSeat.seatid,
+              isoccupied: true,
+            },
+            { onConflict: "flightid,seatid" },
+          )
+
+          if (returnOccupancyError) {
+            console.error("Error updating return seat occupancy:", returnOccupancyError)
+            throw new Error(`Error updating return seat occupancy: ${returnOccupancyError.message}`)
+          }
+        }
+      }
+
+      setBookingCreated(true)
+      console.log("Booking and passengers created successfully")
+    } catch (err: any) {
+      console.error("Error creating booking and passengers:", err)
+      setError(err.message || "Failed to create booking. Please try again.")
+      return false
+    }
+    return true
+  }
+
   // Generate a random booking reference
   const generateBookingReference = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -141,137 +532,162 @@ export default function ConfirmationPage() {
     return result
   }
 
-  // Calculate total price
-  const calculateTotalPrice = () => {
-    let total = 0
-    if (departureFlight) {
-      total += departureFlight.price
-    }
-    if (returnFlight) {
-      total += returnFlight.price
-    }
-    return total
-  }
-
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("vi-VN").format(amount)
   }
 
+  // Check for duplicate passport or ID numbers
+  const checkForDuplicates = async (passengers: PassengerInfo[]) => {
+    const errors: { [key: string]: string } = {}
+
+    for (let i = 0; i < passengers.length; i++) {
+      const passenger = passengers[i]
+
+      // Check passport number
+      if (passenger.passportNumber) {
+        const { data: passportData, error: passportError } = await supabaseClient
+          .from("passengers")
+          .select("passengerid")
+          .eq("passportnumber", passenger.passportNumber)
+          .limit(1)
+
+        if (!passportError && passportData && passportData.length > 0) {
+          errors[`passenger_${i}_passport`] = "This passport number is already in use"
+        }
+      }
+
+      // Check identity card number
+      if (passenger.identityCardNumber) {
+        const { data: idCardData, error: idCardError } = await supabaseClient
+          .from("passengers")
+          .select("passengerid")
+          .eq("identitycardnumber", passenger.identityCardNumber)
+          .limit(1)
+
+        if (!idCardError && idCardData && idCardData.length > 0) {
+          errors[`passenger_${i}_idcard`] = "This identity card number is already in use"
+        }
+      }
+    }
+
+    return errors
+  }
+
+  // Generate a random ticket number
+  const generateTicketNumber = () => {
+    const prefix = "CA"
+    const randomDigits = Math.floor(Math.random() * 10000000)
+      .toString()
+      .padStart(7, "0")
+    return `${prefix}${randomDigits}`
+  }
+
+  // Update the handleContinueToPayment function to ensure booking is created before navigation
   const handleContinueToPayment = async () => {
     try {
       setLoading(true)
+      setError(null)
+      setValidationErrors({})
 
-      if (!customerId) {
-        throw new Error("Customer ID not found")
+      // Check for duplicate passport/ID numbers
+      const duplicateErrors = await checkForDuplicates(passengers)
+      if (Object.keys(duplicateErrors).length > 0) {
+        setValidationErrors(duplicateErrors)
+        throw new Error("Some passenger information is already in use. Please check highlighted fields.")
       }
 
-      if (!departureFlight || !departureSeat) {
-        throw new Error("Flight or seat information is missing")
-      }
+      // If booking hasn't been created yet, create it now
+      if (!bookingCreated && !existingBookingId && departureFlight && departureSeat && customerId) {
+        console.log("Creating booking before payment")
+        const success = await createBookingAndPassengers(
+          departureFlight,
+          departureSeat,
+          returnFlight,
+          returnSeat,
+          passengers,
+          customerId,
+        )
 
-      // Create booking record
-      const { data: bookingData, error: bookingError } = await supabaseClient
-        .from("bookings")
-        .insert({
-          userid: isLoggedIn ? customerId : null, // Only set userid if logged in
-          bookingdatetime: new Date().toISOString(),
-          bookingstatus: "Confirmed",
-          totalprice: calculateTotalPrice(),
-          currencycode: "VND",
-          bookingreference: bookingReference,
-        })
-        .select("bookingid")
-        .single()
-
-      if (bookingError) {
-        throw new Error(`Error creating booking: ${bookingError.message}`)
-      }
-
-      // Create passenger record
-      const { data: passengerData, error: passengerError } = await supabaseClient
-        .from("passengers")
-        .insert({
-          customerid: customerId,
-          bookingid: bookingData.bookingid,
-          passengertype: "Adult", // Add passengertype field with default value "Adult"
-        })
-        .select("passengerid")
-        .single()
-
-      if (passengerError) {
-        throw new Error(`Error creating passenger: ${passengerError.message}`)
-      }
-
-      // Create ticket for departure flight
-      const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
-        bookingid: bookingData.bookingid,
-        flightid: departureFlight.flightId,
-        passengerid: passengerData.passengerid,
-        seatid: departureSeat.seatid,
-        ticketstatus: "Confirmed",
-        ticketprice: departureFlight.price,
-        classid: departureSeat.classid,
-      })
-
-      if (departureTicketError) {
-        throw new Error(`Error creating departure ticket: ${departureTicketError.message}`)
-      }
-
-      // Create ticket for return flight if it exists
-      if (isRoundTrip && returnFlight && returnSeat) {
-        const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
-          bookingid: bookingData.bookingid,
-          flightid: returnFlight.flightId,
-          passengerid: passengerData.passengerid,
-          seatid: returnSeat.seatid,
-          ticketstatus: "Confirmed",
-          ticketprice: returnFlight.price,
-          classid: returnSeat.classid,
-        })
-
-        if (returnTicketError) {
-          throw new Error(`Error creating return ticket: ${returnTicketError.message}`)
+        if (!success) {
+          throw new Error("Failed to create booking. Please try again.")
         }
-      }
 
-      // Mark seats as occupied
-      const { error: departureSeatError } = await supabaseClient
-        .from("seats")
-        .update({ isoccupied: true })
-        .eq("seatid", departureSeat.seatid)
-
-      if (departureSeatError) {
-        throw new Error(`Error updating departure seat: ${departureSeatError.message}`)
-      }
-
-      if (returnSeat) {
-        const { error: returnSeatError } = await supabaseClient
-          .from("seats")
-          .update({ isoccupied: true })
-          .eq("seatid", returnSeat.seatid)
-
-        if (returnSeatError) {
-          throw new Error(`Error updating return seat: ${returnSeatError.message}`)
+        // Double check that booking ID is in session storage
+        const bookingId = sessionStorage.getItem("bookingId")
+        if (!bookingId) {
+          throw new Error("Booking ID not found. Please try again.")
         }
+        console.log("Booking created successfully with ID:", bookingId)
+      } else if (!existingBookingId && !sessionStorage.getItem("bookingId")) {
+        throw new Error("Booking information is missing. Please try again.")
       }
 
-      // Store booking ID in session storage for payment page
-      sessionStorage.setItem("bookingId", bookingData.bookingid)
-      sessionStorage.setItem("bookingReference", bookingReference)
+      // Store total price in session storage for payment page
+      sessionStorage.setItem("totalPrice", calculateTotalPrice().toString())
+
+      // Store contact information for email confirmation
+      if (contactInfo) {
+        sessionStorage.setItem("contactEmail", contactInfo.email)
+      } else if (customerInfo) {
+        sessionStorage.setItem("contactEmail", customerInfo.email)
+      }
 
       // Redirect to payment page
       router.push("/payment")
     } catch (err: any) {
-      console.error("Error creating booking records:", err)
+      console.error("Error proceeding to payment:", err)
       setError(err.message || "Failed to process booking. Please try again.")
       setLoading(false)
     }
   }
 
-  const handlePrint = () => {
-    window.print()
-  }
+  // Effect to create booking once data is loaded
+  useEffect(() => {
+    const createBookingIfNeeded = async () => {
+      if (
+        dataLoaded &&
+        !bookingCreated &&
+        !existingBookingId &&
+        departureFlight &&
+        departureSeat &&
+        passengers.length > 0 &&
+        customerId
+      ) {
+        try {
+          console.log("Attempting to create booking from useEffect")
+          const success = await createBookingAndPassengers(
+            departureFlight,
+            departureSeat,
+            returnFlight,
+            returnSeat,
+            passengers,
+            customerId,
+          )
+
+          if (success) {
+            console.log("Successfully created booking from useEffect")
+          } else {
+            console.error("Failed to create booking from useEffect")
+          }
+        } catch (err) {
+          console.error("Error creating booking in effect:", err)
+        }
+      } else {
+        console.log("Skipping booking creation, conditions not met:", {
+          dataLoaded,
+          bookingCreated,
+          existingBookingId: !!existingBookingId,
+          departureFlight: !!departureFlight,
+          departureSeat: !!departureSeat,
+          passengersLength: passengers.length,
+          customerId: !!customerId,
+        })
+      }
+    }
+
+    createBookingIfNeeded()
+  }, [dataLoaded, bookingCreated, existingBookingId, departureFlight, departureSeat, passengers, customerId])
 
   if (loading) {
     return (
@@ -297,16 +713,48 @@ export default function ConfirmationPage() {
 
   return (
     <main className="min-h-screen bg-[#0f2d3c] pb-20 text-white">
-      <div className="container mx-auto px-4 py-6">
-        <header className="mb-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Booking Confirmation</h1>
-            <Button variant="outline" onClick={handlePrint} className="border-white text-white">
-              <Printer className="mr-2 h-4 w-4" />
-              Print
-            </Button>
+      <div className="w-full bg-[#1a3a4a] py-4">
+        <div className="container mx-auto px-4">
+          {/* Progress Steps - Now full width */}
+          <div className="flex justify-between w-full">
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                1
+              </div>
+              <span className="text-xs text-white mt-1">Passenger</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                2
+              </div>
+              <span className="text-xs text-white mt-1">Contact</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+                3
+              </div>
+              <span className="text-xs text-white mt-1">Confirmation</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                4
+              </div>
+              <span className="text-xs text-white mt-1">Payment</span>
+            </div>
           </div>
-        </header>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex items-start max-w-2xl mx-auto mb-8">
+          <button onClick={() => router.back()} className="mr-4 text-white hover:text-gray-300 transition-colors">
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-2xl font-bold text-white">Booking Confirmation</h1>
+        </div>
 
         {/* Booking Reference */}
         <section className="mb-6 bg-green-600 rounded-lg p-4">
@@ -319,10 +767,107 @@ export default function ConfirmationPage() {
           </div>
         </section>
 
-        {/* Customer Info */}
+        {/* Validation Errors */}
+        {Object.keys(validationErrors).length > 0 && (
+          <section className="mb-6 bg-red-600 rounded-lg p-4">
+            <div className="flex items-center">
+              <AlertCircle className="h-6 w-6 mr-2" />
+              <div>
+                <h2 className="text-xl font-bold">Validation Errors</h2>
+                <ul className="list-disc list-inside">
+                  {Object.values(validationErrors).map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Passenger Information */}
         <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4">
-          <h2 className="text-xl font-bold mb-2">Customer Information</h2>
-          {customerInfo ? (
+          <h2 className="text-xl font-bold mb-4">Passenger Information</h2>
+          {passengers && passengers.length > 0 ? (
+            <div className="space-y-4">
+              {passengers.map((passenger, index) => (
+                <div key={index} className="border-b border-gray-700 pb-4 last:border-b-0 last:pb-0">
+                  <h3 className="font-medium text-lg mb-2">
+                    {passenger.isPrimary ? "Primary Passenger" : `Passenger ${index + 1}`}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="font-medium">Name</p>
+                      <p>{`${passenger.firstName} ${passenger.lastName}`}</p>
+                    </div>
+                    {passenger.passportNumber && (
+                      <div className={validationErrors[`passenger_${index}_passport`] ? "text-red-500" : ""}>
+                        <p className="font-medium">Passport Number</p>
+                        <p className={validationErrors[`passenger_${index}_passport`] ? "border-b border-red-500" : ""}>
+                          {passenger.passportNumber}
+                        </p>
+                        {validationErrors[`passenger_${index}_passport`] && (
+                          <p className="text-sm">{validationErrors[`passenger_${index}_passport`]}</p>
+                        )}
+                      </div>
+                    )}
+                    {passenger.identityCardNumber && (
+                      <div className={validationErrors[`passenger_${index}_idcard`] ? "text-red-500" : ""}>
+                        <p className="font-medium">Identity Card Number</p>
+                        <p className={validationErrors[`passenger_${index}_idcard`] ? "border-b border-red-500" : ""}>
+                          {passenger.identityCardNumber}
+                        </p>
+                        {validationErrors[`passenger_${index}_idcard`] && (
+                          <p className="text-sm">{validationErrors[`passenger_${index}_idcard`]}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : customerInfo ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="font-medium">Name</p>
+                <p>{customerInfo.name}</p>
+              </div>
+              {customerInfo.passportNumber && (
+                <div>
+                  <p className="font-medium">Passport Number</p>
+                  <p>{customerInfo.passportNumber}</p>
+                </div>
+              )}
+              {customerInfo.identityCardNumber && (
+                <div>
+                  <p className="font-medium">Identity Card Number</p>
+                  <p>{customerInfo.identityCardNumber}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p>Passenger information not available</p>
+          )}
+        </section>
+
+        {/* Contact Information */}
+        <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4">
+          <h2 className="text-xl font-bold mb-2">Contact Information</h2>
+          {contactInfo ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="font-medium">Name</p>
+                <p>{`${contactInfo.firstName} ${contactInfo.lastName}`}</p>
+              </div>
+              <div>
+                <p className="font-medium">Email</p>
+                <p>{contactInfo.email}</p>
+              </div>
+              <div>
+                <p className="font-medium">Phone</p>
+                <p>{contactInfo.phone || "N/A"}</p>
+              </div>
+            </div>
+          ) : customerInfo ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="font-medium">Name</p>
@@ -338,7 +883,7 @@ export default function ConfirmationPage() {
               </div>
             </div>
           ) : (
-            <p>Customer information not available</p>
+            <p>Contact information not available</p>
           )}
         </section>
 

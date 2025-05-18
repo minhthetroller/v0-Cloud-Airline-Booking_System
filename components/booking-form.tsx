@@ -65,6 +65,10 @@ export default function BookingForm() {
       const departDateStrUrl = departDate ? format(departDate, "yyyy-MM-dd") : ""
       const returnDateStr = returnDate ? format(returnDate, "yyyy-MM-dd") : ""
 
+      // Store passenger details in session storage for use throughout the booking process
+      sessionStorage.setItem("passengerDetails", JSON.stringify(passengerDetails))
+      sessionStorage.setItem("totalPassengers", getTotalPassengers().toString())
+
       // Navigate to results page with query parameters
       router.push(
         `/results?from=${fromLocation}&to=${toLocation}&tripType=${tripType}&departDate=${departDateStrUrl}${

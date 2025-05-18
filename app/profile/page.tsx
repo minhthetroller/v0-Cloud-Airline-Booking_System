@@ -15,6 +15,7 @@ import { format } from "date-fns"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { useLanguage } from "@/lib/language-context"
+import TierBenefitsModal from "@/components/tier-benefits-modal"
 
 interface UserProfile {
   id: string
@@ -45,6 +46,7 @@ interface CustomerDetails {
 
 interface BookingHistory {
   id: string
+  reference: string
   flightNumber: string
   departureAirport: string
   arrivalAirport: string
@@ -109,22 +111,19 @@ export default function ProfilePage() {
 
       if (customerError) throw customerError
 
-      // Try to get booking history - handle the case where customerid column doesn't exist
-      let bookingData = []
-      try {
-        // First try to get bookings by userid if that relationship exists
-        const { data, error } = await supabaseClient
-          .from("bookings")
-          .select("*")
-          .eq("userid", userRecord.userid)
-          .order("bookingdatetime", { ascending: false })
+      // Store user ID in session storage for later use
+      sessionStorage.setItem("userId", userRecord.userid)
+      sessionStorage.setItem("customerId", userRecord.customerid)
 
-        if (!error && data) {
-          bookingData = data
-        }
-      } catch (bookingErr) {
-        console.error("Could not fetch bookings:", bookingErr)
-        // Non-critical error, continue with empty bookings
+      // Get bookings for this user
+      const { data: bookingsData, error: bookingsError } = await supabaseClient
+        .from("bookings")
+        .select("*")
+        .eq("userid", userRecord.userid)
+        .order("bookingdatetime", { ascending: false })
+
+      if (bookingsError) {
+        console.error("Error fetching bookings:", bookingsError)
       }
 
       // Determine tier based on points
@@ -151,20 +150,48 @@ export default function ProfilePage() {
       setCustomerDetails(customerData)
       setFormData(customerData)
 
-      // Format booking history
-      const formattedBookings = bookingData
-        ? bookingData.map((booking: any) => ({
-            id: booking.bookingid,
-            flightNumber: booking.flightnumber || "JX123",
-            departureAirport: booking.departureairport || "HAN",
-            arrivalAirport: booking.arrivalairport || "SGN",
-            departureDate: booking.departuredate ? format(new Date(booking.departuredate), "MMM dd, yyyy") : "N/A",
-            status: booking.status || "Confirmed",
-            price: booking.totalprice || 0,
-          }))
-        : []
+      // Process bookings data
+      if (bookingsData && bookingsData.length > 0) {
+        const processedBookings = await Promise.all(
+          bookingsData.map(async (booking: any) => {
+            // Get tickets for this booking
+            const { data: ticketsData, error: ticketsError } = await supabaseClient
+              .from("tickets")
+              .select("*, flights(*)")
+              .eq("bookingid", booking.bookingid)
 
-      setBookings(formattedBookings)
+            if (ticketsError) {
+              console.error("Error fetching tickets:", ticketsError)
+              return null
+            }
+
+            if (!ticketsData || ticketsData.length === 0) {
+              return null
+            }
+
+            // Use the first ticket's flight data
+            const ticket = ticketsData[0]
+            const flight = ticket.flights
+
+            return {
+              id: booking.bookingid,
+              reference: booking.bookingreference,
+              flightNumber: flight?.flightnumber || "Unknown",
+              departureAirport: flight?.departureairportcode || "Unknown",
+              arrivalAirport: flight?.arrivalairportcode || "Unknown",
+              departureDate: flight?.departuredatetime
+                ? format(new Date(flight.departuredatetime), "MMM dd, yyyy")
+                : "Unknown",
+              status: booking.bookingstatus || "Pending",
+              price: booking.totalprice || 0,
+            }
+          }),
+        )
+
+        // Filter out null values
+        const validBookings = processedBookings.filter((booking) => booking !== null)
+        setBookings(validBookings as BookingHistory[])
+      }
     } catch (err: any) {
       console.error("Error fetching user data:", err)
       setError("Failed to load profile data. Please try again.")
@@ -249,6 +276,19 @@ export default function ProfilePage() {
     setLanguageMenuOpen(false)
   }
 
+  const getTierCardImage = (tier: string) => {
+    switch (tier.toLowerCase()) {
+      case "stratus":
+        return "/images/stratus-card.png"
+      case "altostratus":
+        return "/images/altostratus-card.png"
+      case "cirrus":
+        return "/images/cirrus-card.png"
+      default:
+        return "/images/stratus-card.png"
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
@@ -270,6 +310,8 @@ export default function ProfilePage() {
       </div>
     )
   }
+
+  const userTier = user.tier
 
   return (
     <div className="min-h-screen bg-[#0f2d3c] text-white">
@@ -349,9 +391,9 @@ export default function ProfilePage() {
               </Link>
             </li>
             <li>
-              <a href="#" className="block py-4 text-white hover:text-[#9b6a4f]">
+              <Link href="/profile/booking-history" className="block py-4 text-white hover:text-[#9b6a4f]">
                 My Bookings
-              </a>
+              </Link>
             </li>
             <li>
               <a href="#" className="block py-4 text-white hover:text-[#9b6a4f] border-b-2 border-[#9b6a4f]">
@@ -384,23 +426,25 @@ export default function ProfilePage() {
                 <div>
                   <p className="text-gray-400 mb-1">Tier</p>
                   <p className="text-xl text-[#9b6a4f] font-bold">{user.tier}</p>
-                  <button className="text-[#9b6a4f] text-sm mt-2 flex items-center">
-                    Privileges of other tiers
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="ml-1"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
+                  <TierBenefitsModal currentTier={userTier}>
+                    <button className="text-[#9b6a4f] text-sm mt-2 flex items-center hover:underline cursor-pointer">
+                      Privileges of other tiers
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="ml-1"
+                      >
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  </TierBenefitsModal>
                 </div>
                 <div>
                   <p className="text-gray-400 mb-1">Validity</p>
@@ -415,7 +459,7 @@ export default function ProfilePage() {
             <div className="flex items-center justify-center md:justify-end">
               <div className="relative w-64 h-40">
                 <Image
-                  src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/img-cosmile-card-traveler_tcm5-4339-7qsnA5eA5mFYRxwDb5t9hBZ76jG6C3.png"
+                  src={getTierCardImage(user.tier) || "/placeholder.svg"}
                   alt={`${user.tier} Card`}
                   fill
                   className="object-contain"

@@ -29,6 +29,7 @@ interface PriceDetailsProps {
   onClose: () => void
   onSelect: (fareType: string, price: number) => void
   availabilityCount?: number
+  totalPassengers?: number
 }
 
 export default function PriceDetails({
@@ -37,6 +38,7 @@ export default function PriceDetails({
   onClose,
   onSelect,
   availabilityCount = 0,
+  totalPassengers = 1,
 }: PriceDetailsProps) {
   const [selectedFare, setSelectedFare] = useState<string | null>(null)
   const [fareOptions, setFareOptions] = useState<Array<{ type: string; price: number | null; availability: number }>>(
@@ -129,11 +131,95 @@ export default function PriceDetails({
         // Fetch prices for this flight and selected classes
         const { data: priceData, error: priceError } = await supabaseClient
           .from("flightprices")
-          .select("price, classid, availabilitycount")
+          .select("price, classid, currencycode")
           .eq("flightid", flightId)
           .in("classid", classIds)
 
         if (priceError) throw new Error(priceError.message)
+
+        // Get flight details to get the airplane ID
+        const { data: flightData, error: flightError } = await supabaseClient
+          .from("flights")
+          .select("airplaneid")
+          .eq("flightid", flightId)
+          .single()
+
+        if (flightError) throw new Error(flightError.message)
+
+        // Get airplane type ID from the airplane
+        const { data: airplaneData, error: airplaneError } = await supabaseClient
+          .from("airplanes")
+          .select("airplanetypeid")
+          .eq("airplaneid", flightData.airplaneid)
+          .single()
+
+        if (airplaneError) throw new Error(airplaneError.message)
+
+        const airplaneTypeId = airplaneData.airplanetypeid
+
+        // Get all seats for this airplane type
+        const { data: seatsData, error: seatsError } = await supabaseClient
+          .from("seats")
+          .select("seatid, classid")
+          .eq("airplanetypeid", airplaneTypeId)
+          .in("classid", classIds)
+
+        if (seatsError) throw new Error(seatsError.message)
+
+        // Count total seats by class
+        const totalSeatsByClass: Record<number, number> = {}
+        seatsData.forEach((seat) => {
+          if (!totalSeatsByClass[seat.classid]) {
+            totalSeatsByClass[seat.classid] = 0
+          }
+          totalSeatsByClass[seat.classid]++
+        })
+
+        // Get occupied seats for this flight
+        const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
+          .from("flightseatoccupancy")
+          .select("seatid")
+          .eq("flightid", flightId)
+          .eq("isoccupied", true)
+
+        if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
+
+        // If there are occupied seats, get their class IDs
+        const occupiedSeatsByClass: Record<number, number> = {}
+        classIds.forEach((classId) => {
+          occupiedSeatsByClass[classId] = 0
+        })
+
+        if (occupiedSeatsData && occupiedSeatsData.length > 0) {
+          // Get all seat IDs from occupied seats
+          const occupiedSeatIds = occupiedSeatsData.map((seat) => seat.seatid)
+
+          // Get class information for these seats
+          const { data: seatClassData, error: seatClassError } = await supabaseClient
+            .from("seats")
+            .select("seatid, classid")
+            .in("seatid", occupiedSeatIds)
+            .in("classid", classIds)
+
+          if (seatClassError) throw new Error(seatClassError.message)
+
+          // Count occupied seats by class
+          seatClassData?.forEach((seat) => {
+            if (!occupiedSeatsByClass[seat.classid]) {
+              occupiedSeatsByClass[seat.classid] = 0
+            }
+            occupiedSeatsByClass[seat.classid]++
+          })
+        }
+
+        // Calculate available seats by class
+        const availableSeatsByClass: Record<number, number> = {}
+        classIds.forEach((classId) => {
+          availableSeatsByClass[classId] = Math.max(
+            0,
+            (totalSeatsByClass[classId] || 0) - (occupiedSeatsByClass[classId] || 0),
+          )
+        })
 
         // Create a map of the fetched prices by class ID
         const fetchedPrices: Record<number, { price: number; availability: number }> = {}
@@ -142,7 +228,7 @@ export default function PriceDetails({
           priceData.forEach((item) => {
             fetchedPrices[item.classid] = {
               price: item.price,
-              availability: item.availabilitycount,
+              availability: availableSeatsByClass[item.classid] || 0,
             }
           })
         }
@@ -337,6 +423,9 @@ export default function PriceDetails({
                   {isEconomy ? "Economy Options" : isFirstClass ? "Premium Options" : "Fare Options"}
                 </h2>
                 <p className="text-sm text-green-600">{availabilityCount} seats available</p>
+                {totalPassengers > 1 && (
+                  <p className="text-sm text-[#0f2d3c]">Booking for {totalPassengers} passengers</p>
+                )}
               </div>
               <div className="text-right">
                 <span className="text-sm text-[#aa846e]">Product comparison</span>
@@ -373,9 +462,14 @@ export default function PriceDetails({
                     <div className="mb-2 rounded bg-[#0f2d3c] px-2 py-1 text-center text-sm font-medium text-white">
                       {fare.type}
                     </div>
-                    <div className="mb-4 text-center text-xl font-bold text-[#8a6a56]">
+                    <div className="mb-2 text-center text-xl font-bold text-[#8a6a56]">
                       {fare.price === null ? "Not Available" : <>VND {formatCurrency(fare.price)}</>}
                     </div>
+                    {totalPassengers > 1 && fare.price !== null && (
+                      <div className="mb-4 text-center text-sm text-[#8a6a56]">
+                        Total: VND {formatCurrency(fare.price * totalPassengers)} for {totalPassengers} passengers
+                      </div>
+                    )}
                     <Button
                       className={`w-full border-2 border-[#0f2d3c] transition-colors ${
                         fare.price !== null && fare.availability > 0

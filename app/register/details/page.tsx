@@ -24,6 +24,9 @@ export default function DetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
+  const [passportNumber, setPassportNumber] = useState("")
+  const [passportExpiry, setPassportExpiry] = useState("")
+
   // Check if previous steps are completed
   useEffect(() => {
     const email = sessionStorage.getItem("registrationEmail")
@@ -68,6 +71,16 @@ export default function DetailsPage() {
       return
     }
 
+    if (!passportNumber) {
+      setError("Please enter your passport number")
+      return
+    }
+
+    if (!passportExpiry) {
+      setError("Please enter your passport expiry date")
+      return
+    }
+
     try {
       // Get email and name from session storage
       const email = sessionStorage.getItem("registrationEmail") || ""
@@ -88,6 +101,8 @@ export default function DetailsPage() {
         address: addressLine,
         city,
         country,
+        passportNumber,
+        passportExpiry,
       }
 
       // Store customer data in session storage
@@ -223,6 +238,35 @@ export default function DetailsPage() {
                 * Phone Number
               </Label>
               <PhoneInput id="phoneNumber" value={phoneNumber} onChange={setPhoneNumber} defaultCountry="VN" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="passportNumber" className="text-[#0f2d3c] mb-2 block">
+                  * Passport Number
+                </Label>
+                <Input
+                  id="passportNumber"
+                  value={passportNumber}
+                  onChange={(e) => setPassportNumber(e.target.value)}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="passportExpiry" className="text-[#0f2d3c] mb-2 block">
+                  * Passport Expiry
+                </Label>
+                <Input
+                  id="passportExpiry"
+                  type="date"
+                  value={passportExpiry}
+                  onChange={(e) => setPassportExpiry(e.target.value)}
+                  className="border-gray-300"
+                  required
+                />
+              </div>
             </div>
 
             <div>

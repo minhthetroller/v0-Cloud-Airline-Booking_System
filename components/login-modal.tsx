@@ -15,6 +15,7 @@ import Image from "next/image"
 import supabaseClient from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import { v4 as uuidv4 } from "uuid"
+import { sha256 } from "js-sha256"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -49,10 +50,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setError(null)
 
     try {
-      // Check if the user exists in our database
+      // Hash the password for comparison
+      const hashedPassword = sha256(password)
+
+      // Check if the user exists and password matches
       const { data: userCheck, error: userCheckError } = await supabaseClient
         .from("users")
-        .select("accountstatus, passwordhash, customerid, userid")
+        .select("*")
         .eq("username", email)
         .single()
 
@@ -66,8 +70,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         throw new Error("Please verify your account before logging in")
       }
 
-      // Check if the password matches
-      if (userCheck.passwordhash !== password) {
+      // Compare hashed passwords
+      if (userCheck.passwordhash !== hashedPassword) {
         throw new Error("Invalid email or password")
       }
 

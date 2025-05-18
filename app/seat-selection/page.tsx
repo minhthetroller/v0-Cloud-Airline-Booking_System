@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ChevronRight, AlertCircle } from "lucide-react"
+import { ChevronRight, AlertCircle, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import supabaseClient from "@/lib/supabase"
@@ -23,13 +23,6 @@ interface SelectedFlightDetails {
   duration?: string
 }
 
-interface AirplaneType {
-  airplanetypeid: number
-  modelname: string
-  manufacturer: string
-  totalseats: number
-}
-
 interface Seat {
   seatid: number
   airplanetypeid: number
@@ -39,14 +32,28 @@ interface Seat {
   isoccupied?: boolean
 }
 
+interface PassengerSeat {
+  seatid: number
+  seatnumber: string
+  classid: number
+  seattype: string
+  airplanetypeid: number
+  isAutoAssigned?: boolean
+}
+
+interface CustomerInfo {
+  name: string
+  email: string
+  phone: string
+}
+
 export default function SeatSelectionPage() {
   const router = useRouter()
   const [selectedDepartureFlight, setSelectedDepartureFlight] = useState<SelectedFlightDetails | null>(null)
   const [selectedReturnFlight, setSelectedReturnFlight] = useState<SelectedFlightDetails | null>(null)
-  const [isRoundTrip, setIsRoundTrip] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [airplaneType, setAirplaneType] = useState<AirplaneType | null>(null)
+  const [airplaneType, setAirplaneType] = useState<any | null>(null)
   const [seats, setSeats] = useState<Seat[]>([])
   const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null)
   const [activeFlightType, setActiveFlightType] = useState<"departure" | "return">("departure")
@@ -57,6 +64,13 @@ export default function SeatSelectionPage() {
   const [occupiedSeats, setOccupiedSeats] = useState<Set<string>>(new Set())
   const [reservationIds, setReservationIds] = useState({ departure: null, return: null })
   const [fareType, setFareType] = useState<string>("Economy Saver")
+  const [isRoundTrip, setIsRoundTrip] = useState(false)
+  const [currentPassengerIndex, setCurrentPassengerIndex] = useState(0)
+  const [totalPassengers, setTotalPassengers] = useState(1)
+  const [passengerTypes, setPassengerTypes] = useState({ adults: 1, children: 0, infants: 0 })
+  const [selectedSeats, setSelectedSeats] = useState<PassengerSeat[]>([])
+  const [departureSelectedSeats, setDepartureSelectedSeats] = useState<PassengerSeat[]>([])
+  const [returnSelectedSeats, setReturnSelectedSeats] = useState<PassengerSeat[]>([])
 
   // Load flight details from session storage
   useEffect(() => {
@@ -89,15 +103,59 @@ export default function SeatSelectionPage() {
     else if (initialFareType === "First Class") setUserClassId(5)
   }, [router])
 
+  useEffect(() => {
+    // Get passenger count from session storage or URL parameters
+    const searchParams = new URLSearchParams(window.location.search)
+    const adults = Number.parseInt(searchParams.get("adults") || "1")
+    const children = Number.parseInt(searchParams.get("children") || "0")
+    const infants = Number.parseInt(searchParams.get("infants") || "0")
+
+    // Also try to get from session storage if URL params are not available
+    const storedPassengerDetails = sessionStorage.getItem("passengerDetails")
+    if (
+      storedPassengerDetails &&
+      !searchParams.get("adults") &&
+      !searchParams.get("children") &&
+      !searchParams.get("infants")
+    ) {
+      const details = JSON.parse(storedPassengerDetails)
+      setPassengerTypes({
+        adults: details.adults || 1,
+        children: details.children || 0,
+        infants: details.infants || 0,
+      })
+      setTotalPassengers((details.adults || 1) + (details.children || 0) + (details.infants || 0))
+    } else {
+      setPassengerTypes({
+        adults,
+        children,
+        infants,
+      })
+      const totalPassengers = adults + children + infants
+      setTotalPassengers(totalPassengers)
+    }
+
+    // Initialize selected seats arrays
+    setDepartureSelectedSeats([])
+    setReturnSelectedSeats([])
+
+    // Store passenger counts in session storage
+    sessionStorage.setItem("passengerCounts", JSON.stringify({ adults, children, infants }))
+  }, [])
+
   // Fetch airplane type and seats when flight details are loaded
   useEffect(() => {
     const fetchAirplaneAndSeats = async () => {
-      if (!selectedDepartureFlight) return
+      if (!selectedDepartureFlight && !selectedReturnFlight) return
 
       setInitialLoading(true)
       setError(null)
 
       try {
+        // Get the active flight
+        const activeFlight = activeFlightType === "departure" ? selectedDepartureFlight : selectedReturnFlight
+        if (!activeFlight) return
+
         // Always use a default airplane type ID since it's not available in the flight details
         const airplaneTypeId = 1 // Default airplane type ID
 
@@ -119,45 +177,62 @@ export default function SeatSelectionPage() {
 
         if (seatsError) throw new Error(seatsError.message)
 
-        // Simulate some occupied seats (in a real app, this would come from the database)
-        const occupied = new Set([
-          "3A",
-          "3B",
-          "3C",
-          "4D",
-          "4E",
-          "4F",
-          "5B",
-          "5E",
-          "6C",
-          "6D",
-          "7A",
-          "7F",
-          "8B",
-          "8E",
-          "9C",
-          "9D",
-          "10A",
-          "10F",
-        ])
+        // Fetch occupied seats from flightseatoccupancy table
+        const { data: occupiedSeatsData, error: occupiedSeatsError } = await supabaseClient
+          .from("flightseatoccupancy")
+          .select("seatid")
+          .eq("flightid", activeFlight.flightId)
+          .eq("isoccupied", true)
 
-        setOccupiedSeats(occupied)
+        if (occupiedSeatsError) throw new Error(occupiedSeatsError.message)
+
+        // Create a set of occupied seat IDs
+        const occupiedSeatIds = new Set(occupiedSeatsData?.map((item: any) => item.seatid) || [])
 
         // Process seats data
         const processedSeats = seatsData.map((seat: Seat) => ({
           ...seat,
-          isoccupied: occupied.has(seat.seatnumber),
+          isoccupied: occupiedSeatIds.has(seat.seatid),
         }))
 
         setSeats(processedSeats)
 
-        // Set selected seat if already chosen
-        if (activeFlightType === "departure" && selectedDepartureSeat) {
-          setSelectedSeat(selectedDepartureSeat)
-        } else if (activeFlightType === "return" && selectedReturnSeat) {
-          setSelectedSeat(selectedReturnSeat)
+        // Create a set of occupied seat numbers for display
+        const occupiedSeatNumbers = new Set()
+        processedSeats.forEach((seat: Seat) => {
+          if (seat.isoccupied) {
+            occupiedSeatNumbers.add(seat.seatnumber)
+          }
+        })
+        setOccupiedSeats(occupiedSeatNumbers)
+
+        // Load previously selected seats
+        const storedSeats = JSON.parse(
+          sessionStorage.getItem(`selectedSeats_${activeFlightType}`) || "[]",
+        ) as PassengerSeat[]
+
+        if (activeFlightType === "departure") {
+          setDepartureSelectedSeats(storedSeats)
+          setSelectedSeats(storedSeats)
+          if (storedSeats.length > 0) {
+            // Find the seat object for the first selected seat
+            const firstSeatObj = processedSeats.find((s) => s.seatid === storedSeats[0]?.seatid)
+            if (firstSeatObj) {
+              setSelectedDepartureSeat(firstSeatObj)
+              setSelectedSeat(firstSeatObj)
+            }
+          }
         } else {
-          setSelectedSeat(null)
+          setReturnSelectedSeats(storedSeats)
+          setSelectedSeats(storedSeats)
+          if (storedSeats.length > 0) {
+            // Find the seat object for the first selected seat
+            const firstSeatObj = processedSeats.find((s) => s.seatid === storedSeats[0]?.seatid)
+            if (firstSeatObj) {
+              setSelectedReturnSeat(firstSeatObj)
+              setSelectedSeat(firstSeatObj)
+            }
+          }
         }
       } catch (err: any) {
         console.error("Error fetching airplane and seats:", err)
@@ -168,10 +243,17 @@ export default function SeatSelectionPage() {
     }
 
     fetchAirplaneAndSeats()
-  }, [selectedDepartureFlight]) // Only run on initial load, not on seat selection
+  }, [selectedDepartureFlight, selectedReturnFlight, activeFlightType])
 
   const handleSeatSelect = async (seat: Seat) => {
     if (seat.isoccupied) return // Cannot select occupied seats
+
+    // Check if seat is already selected by another passenger in the current session
+    const isAlreadySelected = selectedSeats.some((selectedSeat) => selectedSeat.seatid === seat.seatid)
+    if (isAlreadySelected) {
+      alert("This seat is already selected by another passenger in your group")
+      return
+    }
 
     try {
       // Determine which flight we're selecting a seat for
@@ -182,69 +264,331 @@ export default function SeatSelectionPage() {
         throw new Error("Flight ID not found")
       }
 
-      // Check if we need to release a previously selected seat
-      const previousSeat = activeFlightType === "departure" ? selectedDepartureSeat : selectedReturnSeat
-      const previousReservationId = activeFlightType === "departure" ? reservationIds.departure : reservationIds.return
+      // Mark the seat as occupied in the database
+      const { error: occupyError } = await supabaseClient.from("flightseatoccupancy").upsert({
+        flightid: flightId,
+        seatid: seat.seatid,
+        isoccupied: true,
+      })
 
-      if (previousSeat) {
-        // Update the availability count for the previous seat's class
-        try {
-          // In a real implementation, we would update the flightprices table to increment the availability count
-          console.log(`Released seat ${previousSeat.seatnumber} for flight ${flightId}`)
+      if (occupyError) {
+        throw new Error(`Error reserving seat: ${occupyError.message}`)
+      }
 
-          // Update the local state to mark the previous seat as available
-          const updatedSeats = seats.map((s) => {
-            if (s.seatid === previousSeat.seatid) {
+      // Update the local state to mark the new seat as selected
+      const updatedSeats = seats.map((s) => {
+        if (s.seatid === seat.seatid) {
+          return { ...s, isoccupied: true }
+        }
+        return s
+      })
+      setSeats(updatedSeats)
+
+      // Add to occupied seats (for tracking purposes)
+      const newOccupied = new Set(occupiedSeats)
+      newOccupied.add(seat.seatnumber)
+      setOccupiedSeats(newOccupied)
+
+      // Create a passenger seat object
+      const passengerSeat: PassengerSeat = {
+        seatid: seat.seatid,
+        seatnumber: seat.seatnumber,
+        classid: seat.classid,
+        seattype: seat.seattype,
+        airplanetypeid: seat.airplanetypeid,
+      }
+
+      // Update the selected seats
+      const updatedSelectedSeats = [...selectedSeats]
+
+      // If we're replacing a seat, release the old one
+      if (updatedSelectedSeats.length > currentPassengerIndex) {
+        const oldSeat = updatedSelectedSeats[currentPassengerIndex]
+        if (oldSeat) {
+          // Release the old seat in the database
+          await supabaseClient
+            .from("flightseatoccupancy")
+            .update({ isoccupied: false })
+            .eq("flightid", flightId)
+            .eq("seatid", oldSeat.seatid)
+
+          // Update local state to mark the old seat as available
+          const updatedSeatsAfterRelease = updatedSeats.map((s) => {
+            if (s.seatid === oldSeat.seatid) {
               return { ...s, isoccupied: false }
             }
             return s
           })
-          setSeats(updatedSeats)
+          setSeats(updatedSeatsAfterRelease)
 
           // Remove from occupied seats
-          const newOccupied = new Set(occupiedSeats)
-          newOccupied.delete(previousSeat.seatnumber)
+          newOccupied.delete(oldSeat.seatnumber)
           setOccupiedSeats(newOccupied)
-        } catch (err) {
-          console.error("Error releasing previous seat:", err)
         }
       }
 
-      // Update the availability count for the new seat's class
-      try {
-        // In a real implementation, we would update the flightprices table to decrement the availability count
-        console.log(`Reserved seat ${seat.seatnumber} for flight ${flightId}`)
+      // Add or replace the seat at the current passenger index
+      updatedSelectedSeats[currentPassengerIndex] = passengerSeat
+      setSelectedSeats(updatedSelectedSeats)
 
-        // Update the local state to mark the new seat as occupied
-        const updatedSeats = seats.map((s) => {
-          if (s.seatid === seat.seatid) {
-            return { ...s, isoccupied: false } // Not marking as occupied in the map, just for the user's selection
-          }
-          return s
-        })
-        setSeats(updatedSeats)
-
-        // Add to occupied seats (for tracking purposes)
-        const newOccupied = new Set(occupiedSeats)
-        newOccupied.add(seat.seatnumber)
-        setOccupiedSeats(newOccupied)
-      } catch (err) {
-        console.error("Error reserving new seat:", err)
-        throw new Error("Failed to reserve seat")
+      // Update the flight-specific selected seats
+      if (activeFlightType === "departure") {
+        setDepartureSelectedSeats(updatedSelectedSeats)
+        if (currentPassengerIndex === 0) {
+          setSelectedDepartureSeat(seat)
+        }
+      } else {
+        setReturnSelectedSeats(updatedSelectedSeats)
+        if (currentPassengerIndex === 0) {
+          setSelectedReturnSeat(seat)
+        }
       }
 
-      // Update the selected seat
+      // Update the selected seat for display
       setSelectedSeat(seat)
 
-      if (activeFlightType === "departure") {
-        setSelectedDepartureSeat(seat)
-      } else {
-        setSelectedReturnSeat(seat)
+      // Store the selected seats in session storage
+      sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
+
+      // Move to next passenger if not the last one
+      if (currentPassengerIndex < totalPassengers - 1) {
+        setCurrentPassengerIndex(currentPassengerIndex + 1)
       }
     } catch (err: any) {
       console.error("Error reserving seat:", err)
       alert("Failed to reserve seat. Please try again.")
     }
+  }
+
+  // Function to remove a selected seat
+  const handleRemoveSeat = async (index: number) => {
+    try {
+      // Determine which flight we're removing a seat from
+      const flightId =
+        activeFlightType === "departure" ? selectedDepartureFlight?.flightId : selectedReturnFlight?.flightId
+
+      if (!flightId) {
+        throw new Error("Flight ID not found")
+      }
+
+      const currentSelectedSeats = activeFlightType === "departure" ? departureSelectedSeats : returnSelectedSeats
+
+      // Get the seat to remove
+      const seatToRemove = currentSelectedSeats[index]
+      if (!seatToRemove) return
+
+      // Release the seat in the database
+      await supabaseClient
+        .from("flightseatoccupancy")
+        .update({ isoccupied: false })
+        .eq("flightid", flightId)
+        .eq("seatid", seatToRemove.seatid)
+
+      // Update local state to mark the seat as available
+      const updatedSeats = seats.map((s) => {
+        if (s.seatid === seatToRemove.seatid) {
+          return { ...s, isoccupied: false }
+        }
+        return s
+      })
+      setSeats(updatedSeats)
+
+      // Remove from occupied seats
+      const newOccupied = new Set(occupiedSeats)
+      newOccupied.delete(seatToRemove.seatnumber)
+      setOccupiedSeats(newOccupied)
+
+      // Remove the seat from the selected seats array
+      const updatedSelectedSeats = [...currentSelectedSeats]
+      updatedSelectedSeats.splice(index, 1)
+
+      // Update the flight-specific selected seats
+      if (activeFlightType === "departure") {
+        setDepartureSelectedSeats(updatedSelectedSeats)
+        if (index === 0 && updatedSelectedSeats.length > 0) {
+          const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
+          if (firstSeatObj) {
+            setSelectedDepartureSeat(firstSeatObj)
+          } else {
+            setSelectedDepartureSeat(null)
+          }
+        } else if (updatedSelectedSeats.length === 0) {
+          setSelectedDepartureSeat(null)
+        }
+      } else {
+        setReturnSelectedSeats(updatedSelectedSeats)
+        if (index === 0 && updatedSelectedSeats.length > 0) {
+          const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
+          if (firstSeatObj) {
+            setSelectedReturnSeat(firstSeatObj)
+          } else {
+            setSelectedReturnSeat(null)
+          }
+        } else if (updatedSelectedSeats.length === 0) {
+          setSelectedReturnSeat(null)
+        }
+      }
+
+      setSelectedSeats(updatedSelectedSeats)
+
+      // Store the updated selected seats in session storage
+      sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
+
+      // Set current passenger index to the removed seat's index to allow selecting a new seat
+      setCurrentPassengerIndex(index)
+    } catch (err: any) {
+      console.error("Error removing seat:", err)
+      alert("Failed to remove seat. Please try again.")
+    }
+  }
+
+  // Function to find nearby available seats
+  const findNearbySeats = (selectedSeatIds: number[], count: number): PassengerSeat[] => {
+    if (count <= 0) return []
+
+    // Get all available seats (not occupied and not already selected)
+    const availableSeats = seats.filter((seat) => !seat.isoccupied && !selectedSeatIds.includes(seat.seatid))
+
+    if (availableSeats.length === 0) return []
+
+    // If no seats are selected yet, just return the first available seats
+    if (selectedSeatIds.length === 0) {
+      return availableSeats.slice(0, count).map((seat) => ({
+        seatid: seat.seatid,
+        seatnumber: seat.seatnumber,
+        classid: seat.classid,
+        seattype: seat.seattype,
+        airplanetypeid: seat.airplanetypeid,
+        isAutoAssigned: true,
+      }))
+    }
+
+    // Find the last selected seat to use as reference
+    const lastSelectedSeatId = selectedSeatIds[selectedSeatIds.length - 1]
+    const lastSelectedSeat = seats.find((seat) => seat.seatid === lastSelectedSeatId)
+
+    if (!lastSelectedSeat) return []
+
+    // Parse seat number to get row and column
+    const lastSeatRow = Number.parseInt(lastSelectedSeat.seatnumber.replace(/[A-Z]/g, ""))
+    const lastSeatCol = lastSelectedSeat.seatnumber.replace(/[0-9]/g, "")
+
+    // Sort available seats by proximity to the last selected seat
+    // This is a simple implementation - in a real app, you'd want a more sophisticated algorithm
+    const sortedSeats = [...availableSeats].sort((a, b) => {
+      const aRow = Number.parseInt(a.seatnumber.replace(/[A-Z]/g, ""))
+      const aCol = a.seatnumber.replace(/[0-9]/g, "")
+      const bRow = Number.parseInt(b.seatnumber.replace(/[A-Z]/g, ""))
+      const bCol = b.seatnumber.replace(/[0-9]/g, "")
+
+      // Calculate "distance" - prioritize same row, then nearby rows
+      const aRowDiff = Math.abs(aRow - lastSeatRow)
+      const bRowDiff = Math.abs(bRow - lastSeatRow)
+
+      // First prioritize same row
+      if (aRow === lastSeatRow && bRow !== lastSeatRow) return -1
+      if (bRow === lastSeatRow && aRow !== lastSeatRow) return 1
+
+      // Then prioritize by row proximity
+      if (aRowDiff !== bRowDiff) return aRowDiff - bRowDiff
+
+      // If same row proximity, prioritize by class (same class is better)
+      if (a.classid === lastSelectedSeat.classid && b.classid !== lastSelectedSeat.classid) return -1
+      if (b.classid === lastSelectedSeat.classid && a.classid !== lastSelectedSeat.classid) return 1
+
+      // If same class, just sort by seat number for consistency
+      return a.seatnumber.localeCompare(b.seatnumber)
+    })
+
+    // Return the closest seats
+    return sortedSeats.slice(0, count).map((seat) => ({
+      seatid: seat.seatid,
+      seatnumber: seat.seatnumber,
+      classid: seat.classid,
+      seattype: seat.seattype,
+      airplanetypeid: seat.airplanetypeid,
+      isAutoAssigned: true,
+    }))
+  }
+
+  // Function to auto-assign remaining seats
+  const autoAssignRemainingSeats = async () => {
+    const currentSelectedSeats = activeFlightType === "departure" ? departureSelectedSeats : returnSelectedSeats
+    const flightId =
+      activeFlightType === "departure" ? selectedDepartureFlight?.flightId : selectedReturnFlight?.flightId
+
+    if (!flightId) return
+
+    // Calculate how many more seats we need
+    const seatsNeeded = totalPassengers - currentSelectedSeats.length
+
+    if (seatsNeeded <= 0) return // All seats are already selected
+
+    // Get IDs of already selected seats
+    const selectedSeatIds = currentSelectedSeats.map((seat) => seat.seatid)
+
+    // Find nearby available seats
+    const autoAssignedSeats = findNearbySeats(selectedSeatIds, seatsNeeded)
+
+    if (autoAssignedSeats.length === 0) {
+      setError("Not enough available seats to auto-assign. Please select seats manually.")
+      return false
+    }
+
+    // Mark auto-assigned seats as occupied in the database
+    for (const seat of autoAssignedSeats) {
+      await supabaseClient.from("flightseatoccupancy").upsert({
+        flightid: flightId,
+        seatid: seat.seatid,
+        isoccupied: true,
+      })
+    }
+
+    // Update local state
+    const updatedSeats = [...seats]
+    for (const seat of autoAssignedSeats) {
+      const index = updatedSeats.findIndex((s) => s.seatid === seat.seatid)
+      if (index !== -1) {
+        updatedSeats[index] = { ...updatedSeats[index], isoccupied: true }
+      }
+    }
+    setSeats(updatedSeats)
+
+    // Update occupied seats set
+    const newOccupied = new Set(occupiedSeats)
+    for (const seat of autoAssignedSeats) {
+      newOccupied.add(seat.seatnumber)
+    }
+    setOccupiedSeats(newOccupied)
+
+    // Add auto-assigned seats to selected seats
+    const updatedSelectedSeats = [...currentSelectedSeats, ...autoAssignedSeats]
+
+    // Update the flight-specific selected seats
+    if (activeFlightType === "departure") {
+      setDepartureSelectedSeats(updatedSelectedSeats)
+      if (!selectedDepartureSeat && updatedSelectedSeats.length > 0) {
+        const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
+        if (firstSeatObj) {
+          setSelectedDepartureSeat(firstSeatObj)
+        }
+      }
+    } else {
+      setReturnSelectedSeats(updatedSelectedSeats)
+      if (!selectedReturnSeat && updatedSelectedSeats.length > 0) {
+        const firstSeatObj = seats.find((s) => s.seatid === updatedSelectedSeats[0].seatid)
+        if (firstSeatObj) {
+          setSelectedReturnSeat(firstSeatObj)
+        }
+      }
+    }
+
+    setSelectedSeats(updatedSelectedSeats)
+
+    // Store the selected seats in session storage
+    sessionStorage.setItem(`selectedSeats_${activeFlightType}`, JSON.stringify(updatedSelectedSeats))
+
+    return true
   }
 
   const handleUpgradeClass = (newClassId: number) => {
@@ -299,37 +643,45 @@ export default function SeatSelectionPage() {
     }
   }
 
-  const handleContinue = () => {
-    if (isRoundTrip && activeFlightType === "departure") {
-      if (!selectedDepartureSeat) {
-        alert("Please select a seat for your departure flight")
-        return
+  const handleContinue = async () => {
+    const currentSelectedSeats = activeFlightType === "departure" ? departureSelectedSeats : returnSelectedSeats
+
+    // Check if we need to auto-assign seats
+    if (currentSelectedSeats.length < totalPassengers) {
+      const autoAssignSuccess = await autoAssignRemainingSeats()
+      if (!autoAssignSuccess) {
+        return // Don't continue if auto-assignment failed
       }
-      // Switch to return flight seat selection
-      setActiveFlightType("return")
-      return
     }
 
-    // Check if seats are selected
-    if (
-      (activeFlightType === "departure" && !selectedDepartureSeat) ||
-      (activeFlightType === "return" && !selectedReturnSeat)
-    ) {
-      alert("Please select a seat for your flight")
+    if (isRoundTrip && activeFlightType === "departure") {
+      // Switch to return flight seat selection
+      setActiveFlightType("return")
+      // Reset passenger index for return flight
+      setCurrentPassengerIndex(0)
       return
     }
 
     // Store selected seats in session storage
-    if (selectedDepartureSeat) {
-      sessionStorage.setItem("selectedDepartureSeat", JSON.stringify(selectedDepartureSeat))
+    if (departureSelectedSeats.length > 0) {
+      sessionStorage.setItem(
+        "selectedDepartureSeat",
+        JSON.stringify(seats.find((s) => s.seatid === departureSelectedSeats[0].seatid) || null),
+      )
+      sessionStorage.setItem("selectedSeats_departure", JSON.stringify(departureSelectedSeats))
     }
 
-    if (selectedReturnSeat) {
-      sessionStorage.setItem("selectedReturnSeat", JSON.stringify(selectedReturnSeat))
+    if (returnSelectedSeats.length > 0) {
+      sessionStorage.setItem(
+        "selectedReturnSeat",
+        JSON.stringify(seats.find((s) => s.seatid === returnSelectedSeats[0].seatid) || null),
+      )
+      sessionStorage.setItem("selectedSeats_return", JSON.stringify(returnSelectedSeats))
     }
 
-    // Store reservation IDs
-    sessionStorage.setItem("seatReservationIds", JSON.stringify(reservationIds))
+    // Store total number of passengers
+    sessionStorage.setItem("totalPassengers", totalPassengers.toString())
+    sessionStorage.setItem("passengerTypes", JSON.stringify(passengerTypes))
 
     // Check if user is already logged in
     const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
@@ -345,12 +697,29 @@ export default function SeatSelectionPage() {
 
   const handleSwitchFlight = () => {
     setActiveFlightType(activeFlightType === "departure" ? "return" : "departure")
+    setCurrentPassengerIndex(0)
 
-    // Update the selected seat based on the active flight type
+    // Update the selected seats based on the active flight type
     if (activeFlightType === "departure") {
-      setSelectedSeat(selectedReturnSeat)
+      setSelectedSeats(returnSelectedSeats)
+      if (returnSelectedSeats.length > 0) {
+        const firstSeatObj = seats.find((s) => s.seatid === returnSelectedSeats[0].seatid)
+        if (firstSeatObj) {
+          setSelectedSeat(firstSeatObj)
+        }
+      } else {
+        setSelectedSeat(null)
+      }
     } else {
-      setSelectedSeat(selectedDepartureSeat)
+      setSelectedSeats(departureSelectedSeats)
+      if (departureSelectedSeats.length > 0) {
+        const firstSeatObj = seats.find((s) => s.seatid === departureSelectedSeats[0].seatid)
+        if (firstSeatObj) {
+          setSelectedSeat(firstSeatObj)
+        }
+      } else {
+        setSelectedSeat(null)
+      }
     }
   }
 
@@ -369,13 +738,33 @@ export default function SeatSelectionPage() {
   const handleCancelBooking = async () => {
     // Release all seat reservations
     try {
-      // In a real implementation, we would update the flightprices table to increment the availability count
-      console.log("Released all seat reservations")
+      // Release departure seats
+      for (const seat of departureSelectedSeats) {
+        if (selectedDepartureFlight) {
+          await supabaseClient
+            .from("flightseatoccupancy")
+            .update({ isoccupied: false })
+            .eq("flightid", selectedDepartureFlight.flightId)
+            .eq("seatid", seat.seatid)
+        }
+      }
+
+      // Release return seats
+      for (const seat of returnSelectedSeats) {
+        if (selectedReturnFlight) {
+          await supabaseClient
+            .from("flightseatoccupancy")
+            .update({ isoccupied: false })
+            .eq("flightid", selectedReturnFlight.flightId)
+            .eq("seatid", seat.seatid)
+        }
+      }
 
       // Clear session storage and redirect to home
       sessionStorage.removeItem("selectedDepartureSeat")
       sessionStorage.removeItem("selectedReturnSeat")
-      sessionStorage.removeItem("seatReservationIds")
+      sessionStorage.removeItem("selectedSeats_departure")
+      sessionStorage.removeItem("selectedSeats_return")
       router.push("/")
     } catch (err) {
       console.error("Error releasing seat reservations:", err)
@@ -388,8 +777,27 @@ export default function SeatSelectionPage() {
       // Release seat reservations if navigating away without completing booking
       const cleanup = async () => {
         try {
-          // In a real implementation, we would update the flightprices table to increment the availability count
-          console.log("Released all seat reservations during cleanup")
+          // Release departure seats
+          for (const seat of departureSelectedSeats) {
+            if (selectedDepartureFlight) {
+              await supabaseClient
+                .from("flightseatoccupancy")
+                .update({ isoccupied: false })
+                .eq("flightid", selectedDepartureFlight.flightId)
+                .eq("seatid", seat.seatid)
+            }
+          }
+
+          // Release return seats
+          for (const seat of returnSelectedSeats) {
+            if (selectedReturnFlight) {
+              await supabaseClient
+                .from("flightseatoccupancy")
+                .update({ isoccupied: false })
+                .eq("flightid", selectedReturnFlight.flightId)
+                .eq("seatid", seat.seatid)
+            }
+          }
         } catch (err) {
           console.error("Error releasing seat reservations during cleanup:", err)
         }
@@ -397,7 +805,7 @@ export default function SeatSelectionPage() {
 
       cleanup()
     }
-  }, [reservationIds])
+  }, [departureSelectedSeats, returnSelectedSeats, selectedDepartureFlight, selectedReturnFlight])
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -406,6 +814,9 @@ export default function SeatSelectionPage() {
 
   // Get active flight
   const activeFlight = activeFlightType === "departure" ? selectedDepartureFlight : selectedReturnFlight
+
+  // Get current selected seats
+  const currentSelectedSeats = activeFlightType === "departure" ? departureSelectedSeats : returnSelectedSeats
 
   if (initialLoading && !activeFlight) {
     return (
@@ -481,6 +892,54 @@ export default function SeatSelectionPage() {
           </div>
         </section>
 
+        {/* Passenger Info */}
+        <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4">
+          <h2 className="text-xl font-bold mb-2">Passenger Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="font-medium">Adults</p>
+              <p className="text-lg">{passengerTypes.adults}</p>
+            </div>
+            <div>
+              <p className="font-medium">Children</p>
+              <p className="text-lg">{passengerTypes.children}</p>
+            </div>
+            <div>
+              <p className="font-medium">Infants</p>
+              <p className="text-lg">{passengerTypes.infants}</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Selected Seats */}
+        {currentSelectedSeats.length > 0 && (
+          <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4">
+            <h2 className="text-xl font-bold mb-4">Selected Seats</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {currentSelectedSeats.map((seat, index) => (
+                <div
+                  key={index}
+                  className={`p-3 rounded-lg ${
+                    seat.isAutoAssigned
+                      ? "bg-yellow-800/50 border border-yellow-600"
+                      : "bg-blue-800/50 border border-blue-600"
+                  } relative`}
+                >
+                  <button
+                    onClick={() => handleRemoveSeat(index)}
+                    className="absolute top-1 right-1 text-white hover:text-red-400"
+                    aria-label="Remove seat"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <p className="font-bold text-lg">{seat.seatnumber}</p>
+                  <p className="text-sm">{seat.isAutoAssigned ? "Auto-assigned" : "Selected"}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Seat Map */}
         <section className="mb-6">
           <div className="bg-white rounded-lg p-4 text-[#0f2d3c]">
@@ -506,53 +965,16 @@ export default function SeatSelectionPage() {
             )}
           </div>
         </section>
-
-        {/* Selected Seat Info */}
-        {selectedSeat && (
-          <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4">
-            <h2 className="text-xl font-bold mb-2">Selected Seat</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="font-medium">Seat Number</p>
-                <p className="text-2xl">{selectedSeat.seatnumber}</p>
-              </div>
-              <div>
-                <p className="font-medium">Seat Type</p>
-                <p>{selectedSeat.seattype}</p>
-              </div>
-              <div>
-                <p className="font-medium">Class</p>
-                <p>{fareType}</p>
-              </div>
-            </div>
-          </section>
-        )}
       </div>
 
       {/* Sticky bar at the bottom */}
       <div className="fixed bottom-0 left-0 right-0 z-10 bg-white p-4 shadow-lg">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="text-xl font-bold text-[#0f2d3c]">
-            {activeFlightType === "departure"
-              ? selectedDepartureSeat
-                ? `Selected Seat: ${selectedDepartureSeat.seatnumber}`
-                : "No seat selected"
-              : selectedReturnSeat
-                ? `Selected Seat: ${selectedReturnSeat.seatnumber}`
-                : "No seat selected"}
-          </div>
+        <div className="container mx-auto flex justify-end">
           <div className="flex gap-4">
             <Button variant="outline" className="border-[#0f2d3c] text-[#0f2d3c]" onClick={handleCancelBooking}>
               Cancel
             </Button>
-            <Button
-              className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90"
-              onClick={handleContinue}
-              disabled={
-                (activeFlightType === "departure" && !selectedDepartureSeat) ||
-                (activeFlightType === "return" && !selectedReturnSeat)
-              }
-            >
+            <Button className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90" onClick={handleContinue}>
               {isRoundTrip && activeFlightType === "departure" ? "Next Flight" : "Continue"}
               <ChevronRight className="ml-1 h-4 w-4" />
             </Button>

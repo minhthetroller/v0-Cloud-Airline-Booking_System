@@ -2,13 +2,13 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChevronRight, AlertCircle } from "lucide-react"
+import { ChevronRight, AlertCircle, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import supabaseClient from "@/lib/supabase"
@@ -24,29 +24,112 @@ interface GuestInformation {
   passportExpiry: string
   identityCardNumber: string
   pronoun: string
+  passengerType?: string
 }
 
 export default function GuestInformationPage() {
   const router = useRouter()
-  const [guestInfo, setGuestInfo] = useState<GuestInformation>({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    dateOfBirth: "",
-    nationality: "",
-    passportNumber: "",
-    passportExpiry: "",
-    identityCardNumber: "",
-    pronoun: "Mr.",
-  })
+  const [passengers, setPassengers] = useState<GuestInformation[]>([])
+  const [currentPassengerIndex, setCurrentPassengerIndex] = useState(0)
+  const [totalPassengers, setTotalPassengers] = useState(1)
   const [errors, setErrors] = useState<Partial<GuestInformation>>({})
   const [loading, setLoading] = useState(false)
   const [generalError, setGeneralError] = useState<string | null>(null)
+  const [passengerTypes, setPassengerTypes] = useState({ adults: 1, children: 0, infants: 0 })
+
+  useEffect(() => {
+    // Try to get passenger count from URL parameters first
+    const searchParams = new URLSearchParams(window.location.search)
+    const urlAdults = Number.parseInt(searchParams.get("adults") || "0")
+    const urlChildren = Number.parseInt(searchParams.get("children") || "0")
+    const urlInfants = Number.parseInt(searchParams.get("infants") || "0")
+
+    // Then try to get from session storage
+    const storedPassengerDetails = sessionStorage.getItem("passengerDetails")
+    const storedTotalPassengers = sessionStorage.getItem("totalPassengers")
+
+    let adults = 1
+    let children = 0
+    let infants = 0
+    let total = 1
+
+    // Use URL parameters if available
+    if (urlAdults > 0 || urlChildren > 0 || urlInfants > 0) {
+      adults = urlAdults || 1
+      children = urlChildren || 0
+      infants = urlInfants || 0
+      total = adults + children + infants
+    }
+    // Otherwise use session storage if available
+    else if (storedPassengerDetails) {
+      try {
+        const details = JSON.parse(storedPassengerDetails)
+        adults = details.adults || 1
+        children = details.children || 0
+        infants = details.infants || 0
+        total = adults + children + infants
+      } catch (e) {
+        console.error("Error parsing passenger details from session storage:", e)
+      }
+    }
+    // Or use stored total if available
+    else if (storedTotalPassengers) {
+      total = Number.parseInt(storedTotalPassengers, 10) || 1
+      adults = total // Default to all adults if we only have total
+    }
+
+    setPassengerTypes({
+      adults,
+      children,
+      infants,
+    })
+    setTotalPassengers(total)
+
+    // Initialize passenger array with the correct number of passengers
+    const initialPassengers = Array(total)
+      .fill(null)
+      .map((_, index) => {
+        // Determine passenger type
+        let passengerType = "adult"
+        if (index < adults) {
+          passengerType = "adult"
+        } else if (index < adults + children) {
+          passengerType = "child"
+        } else {
+          passengerType = "infant"
+        }
+
+        return {
+          firstName: "",
+          lastName: "",
+          email: "",
+          phone: "",
+          dateOfBirth: "",
+          nationality: "",
+          passportNumber: "",
+          passportExpiry: "",
+          identityCardNumber: "",
+          pronoun: "Mr.",
+          passengerType,
+        }
+      })
+
+    setPassengers(initialPassengers)
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    setGuestInfo((prev) => ({ ...prev, [name]: value }))
+
+    setPassengers((prev) => {
+      const updated = [...prev]
+      if (updated[currentPassengerIndex]) {
+        updated[currentPassengerIndex] = {
+          ...updated[currentPassengerIndex],
+          [name]: value,
+        }
+      }
+      return updated
+    })
 
     // Clear error for this field when user types
     if (errors[name as keyof GuestInformation]) {
@@ -55,7 +138,16 @@ export default function GuestInformationPage() {
   }
 
   const handleSelectChange = (name: string, value: string) => {
-    setGuestInfo((prev) => ({ ...prev, [name]: value }))
+    setPassengers((prev) => {
+      const updated = [...prev]
+      if (updated[currentPassengerIndex]) {
+        updated[currentPassengerIndex] = {
+          ...updated[currentPassengerIndex],
+          [name]: value,
+        }
+      }
+      return updated
+    })
 
     // Clear error for this field when user selects
     if (errors[name as keyof GuestInformation]) {
@@ -63,7 +155,28 @@ export default function GuestInformationPage() {
     }
   }
 
+  const goToNextPassenger = () => {
+    if (!validateForm()) return
+
+    if (currentPassengerIndex < totalPassengers - 1) {
+      setCurrentPassengerIndex((prev) => prev + 1)
+      setErrors({})
+    } else {
+      handleSubmit()
+    }
+  }
+
+  const goToPreviousPassenger = () => {
+    if (currentPassengerIndex > 0) {
+      setCurrentPassengerIndex((prev) => prev - 1)
+      setErrors({})
+    }
+  }
+
   const validateForm = (): boolean => {
+    const currentPassenger = passengers[currentPassengerIndex]
+    if (!currentPassenger) return false
+
     const newErrors: Partial<GuestInformation> = {}
     let isValid = true
 
@@ -71,8 +184,6 @@ export default function GuestInformationPage() {
     const requiredFields: (keyof GuestInformation)[] = [
       "firstName",
       "lastName",
-      "email",
-      "phone",
       "dateOfBirth",
       "nationality",
       "passportNumber",
@@ -80,28 +191,37 @@ export default function GuestInformationPage() {
       "pronoun",
     ]
 
+    // Add email and phone as required only for the first passenger
+    if (currentPassengerIndex === 0) {
+      requiredFields.push("email", "phone")
+    }
+
     requiredFields.forEach((field) => {
-      if (!guestInfo[field]?.trim()) {
+      if (!currentPassenger[field]?.trim()) {
         newErrors[field] = "This field is required"
         isValid = false
       }
     })
 
-    // Email validation
-    if (guestInfo.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestInfo.email)) {
+    // Email validation for first passenger
+    if (
+      currentPassengerIndex === 0 &&
+      currentPassenger.email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(currentPassenger.email)
+    ) {
       newErrors.email = "Please enter a valid email address"
       isValid = false
     }
 
-    // Phone validation
-    if (guestInfo.phone && !/^\+?[0-9]{10,15}$/.test(guestInfo.phone)) {
+    // Phone validation for first passenger
+    if (currentPassengerIndex === 0 && currentPassenger.phone && !/^\+?[0-9]{10,15}$/.test(currentPassenger.phone)) {
       newErrors.phone = "Please enter a valid phone number"
       isValid = false
     }
 
     // Date of birth validation
-    if (guestInfo.dateOfBirth) {
-      const dob = new Date(guestInfo.dateOfBirth)
+    if (currentPassenger.dateOfBirth) {
+      const dob = new Date(currentPassenger.dateOfBirth)
       const today = new Date()
       if (dob > today) {
         newErrors.dateOfBirth = "Date of birth cannot be in the future"
@@ -110,8 +230,8 @@ export default function GuestInformationPage() {
     }
 
     // Passport expiry validation
-    if (guestInfo.passportExpiry) {
-      const expiry = new Date(guestInfo.passportExpiry)
+    if (currentPassenger.passportExpiry) {
+      const expiry = new Date(currentPassenger.passportExpiry)
       const today = new Date()
       if (expiry < today) {
         newErrors.passportExpiry = "Passport has expired"
@@ -123,9 +243,7 @@ export default function GuestInformationPage() {
     return isValid
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const handleSubmit = async () => {
     if (!validateForm()) {
       return
     }
@@ -134,58 +252,146 @@ export default function GuestInformationPage() {
     setGeneralError(null)
 
     try {
-      // Store guest information in session storage
-      sessionStorage.setItem("guestInformation", JSON.stringify(guestInfo))
+      // Store all passengers information in session storage
+      sessionStorage.setItem("passengers", JSON.stringify(passengers))
 
-      // Create a temporary customer record
-      const { data: customerData, error: customerError } = await supabaseClient
-        .from("customers")
-        .insert({
-          firstname: guestInfo.firstName,
-          lastname: guestInfo.lastName,
-          email: guestInfo.email,
-          phonenumber: guestInfo.phone,
-          dateofbirth: guestInfo.dateOfBirth,
-          nationality: guestInfo.nationality,
-          passportnumber: guestInfo.passportNumber,
-          passportexpiry: guestInfo.passportExpiry,
-          // Only include identitycardnumber if it's provided
-          ...(guestInfo.identityCardNumber ? { identitycardnumber: guestInfo.identityCardNumber } : {}),
-          pronoun: guestInfo.pronoun,
-          // Add default values for required fields that aren't in the form
-          gender: "Not specified",
-          country: guestInfo.nationality, // Use nationality as default country
-          city: "Not specified",
-        })
-        .select("customerid")
-        .single()
+      // Create customer records for all passengers
+      const customerIds = []
 
-      if (customerError) {
-        // Check for duplicate email error
-        if (customerError.message.includes("duplicate key") && customerError.message.includes("email")) {
-          throw new Error(
-            "This email address is already registered. Please use a different email or log in to your account.",
-          )
+      for (const passenger of passengers) {
+        const { data: customerData, error: customerError } = await supabaseClient
+          .from("customers")
+          .insert({
+            firstname: passenger.firstName,
+            lastname: passenger.lastName,
+            email: passenger.email || passengers[0].email, // Use first passenger's email if not provided
+            phonenumber: passenger.phone || passengers[0].phone, // Use first passenger's phone if not provided
+            dateofbirth: passenger.dateOfBirth,
+            nationality: passenger.nationality,
+            passportnumber: passenger.passportNumber,
+            passportexpiry: passenger.passportExpiry,
+            // Only include identitycardnumber if it's provided
+            ...(passenger.identityCardNumber ? { identitycardnumber: passenger.identityCardNumber } : {}),
+            pronoun: passenger.pronoun,
+            // Add default values for required fields that aren't in the form
+            gender: "Not specified",
+            country: passenger.nationality, // Use nationality as default country
+            city: "Not specified",
+          })
+          .select("customerid")
+          .single()
+
+        if (customerError) {
+          throw new Error(customerError.message)
         }
-        throw new Error(customerError.message)
+
+        customerIds.push(customerData.customerid)
       }
 
-      // Store customer ID in session storage
-      sessionStorage.setItem("customerId", customerData.customerid)
+      // Store customer IDs in session storage
+      sessionStorage.setItem("customerIds", JSON.stringify(customerIds))
+      sessionStorage.setItem("primaryCustomerId", customerIds[0])
+
+      // Create a booking record immediately
+      const bookingReference = generateBookingReference()
+      const { data: bookingData, error: bookingError } = await supabaseClient
+        .from("bookings")
+        .insert({
+          bookingdatetime: new Date().toISOString(),
+          bookingstatus: "Pending",
+          totalprice: 0, // Will be updated in confirmation page
+          currencycode: "VND",
+          bookingreference: bookingReference,
+          userid: null, // Will be updated if user is logged in
+        })
+        .select("bookingid")
+        .single()
+
+      if (bookingError) {
+        throw new Error(`Error creating booking: ${bookingError.message}`)
+      }
+
+      // Store booking ID and reference in session storage
+      sessionStorage.setItem("bookingId", bookingData.bookingid)
+      sessionStorage.setItem("bookingReference", bookingReference)
+
+      // Create passenger records for each customer
+      for (const customerId of customerIds) {
+        const { error: passengerError } = await supabaseClient.from("passengers").insert({
+          customerid: customerId,
+          bookingid: bookingData.bookingid,
+          passengertype: "Adult", // Default to Adult
+        })
+
+        if (passengerError) {
+          throw new Error(`Error creating passenger: ${passengerError.message}`)
+        }
+      }
 
       // Redirect to contact information page
       router.push("/contact-information")
     } catch (err: any) {
-      console.error("Error saving guest information:", err)
+      console.error("Error saving passenger information:", err)
       setGeneralError(err.message || "Failed to save your information. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
+  const generateBookingReference = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let result = ""
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return result
+  }
+
   return (
     <main className="min-h-screen bg-[#0f2d3c] py-8">
-      <div className="container mx-auto px-4">
+      {/* Full width progress bar */}
+      <div className="w-full bg-[#1a3a4a] py-4">
+        <div className="container mx-auto px-4">
+          <div className="flex justify-between w-full">
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+                1
+              </div>
+              <span className="text-xs text-white mt-1">Passenger</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                2
+              </div>
+              <span className="text-xs text-white mt-1">Contact</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                3
+              </div>
+              <span className="text-xs text-white mt-1">Confirmation</span>
+            </div>
+            <div className="flex-1 h-1 bg-gray-300 self-center mx-2"></div>
+            <div className="flex flex-col items-center">
+              <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
+                4
+              </div>
+              <span className="text-xs text-white mt-1">Payment</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 mt-6">
+        <div className="flex items-center max-w-2xl mx-auto mb-6">
+          <button onClick={() => router.back()} className="mr-4 text-white hover:text-gray-300 transition-colors">
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <h1 className="text-2xl font-bold text-white">Passenger Information</h1>
+        </div>
+
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>Passenger Information</CardTitle>
@@ -198,10 +404,38 @@ export default function GuestInformationPage() {
                 <AlertDescription>{generalError}</AlertDescription>
               </Alert>
             )}
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form
+              id="guestInfoForm"
+              onSubmit={(e) => {
+                e.preventDefault()
+                goToNextPassenger()
+              }}
+              className="space-y-4"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium">
+                  Passenger {currentPassengerIndex + 1} of {totalPassengers}
+                  {currentPassengerIndex === 0 ? " (Primary Contact)" : ""}
+                </h3>
+                <div className="flex space-x-2">
+                  {Array.from({ length: totalPassengers }).map((_, index) => (
+                    <div
+                      key={index}
+                      className={`w-3 h-3 rounded-full ${
+                        index === currentPassengerIndex ? "bg-blue-500" : "bg-gray-300"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Rest of the form fields remain the same, but use passengers[currentPassengerIndex] instead of guestInfo */}
               <div className="space-y-2">
                 <Label htmlFor="pronoun">Title</Label>
-                <Select value={guestInfo.pronoun} onValueChange={(value) => handleSelectChange("pronoun", value)}>
+                <Select
+                  value={passengers[currentPassengerIndex]?.pronoun || "Mr."}
+                  onValueChange={(value) => handleSelectChange("pronoun", value)}
+                >
                   <SelectTrigger className={errors.pronoun ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select a title" />
                   </SelectTrigger>
@@ -222,7 +456,7 @@ export default function GuestInformationPage() {
                   <Input
                     id="firstName"
                     name="firstName"
-                    value={guestInfo.firstName}
+                    value={passengers[currentPassengerIndex]?.firstName || ""}
                     onChange={handleChange}
                     placeholder="Enter first name"
                     className={errors.firstName ? "border-red-500" : ""}
@@ -234,7 +468,7 @@ export default function GuestInformationPage() {
                   <Input
                     id="lastName"
                     name="lastName"
-                    value={guestInfo.lastName}
+                    value={passengers[currentPassengerIndex]?.lastName || ""}
                     onChange={handleChange}
                     placeholder="Enter last name"
                     className={errors.lastName ? "border-red-500" : ""}
@@ -245,12 +479,14 @@ export default function GuestInformationPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">
+                    Email {currentPassengerIndex === 0 ? "" : <span className="text-gray-400 text-sm">(Optional)</span>}
+                  </Label>
                   <Input
                     id="email"
                     name="email"
                     type="email"
-                    value={guestInfo.email}
+                    value={passengers[currentPassengerIndex]?.email || ""}
                     onChange={handleChange}
                     placeholder="Enter email address"
                     className={errors.email ? "border-red-500" : ""}
@@ -258,11 +494,14 @@ export default function GuestInformationPage() {
                   {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label htmlFor="phone">
+                    Phone Number{" "}
+                    {currentPassengerIndex === 0 ? "" : <span className="text-gray-400 text-sm">(Optional)</span>}
+                  </Label>
                   <Input
                     id="phone"
                     name="phone"
-                    value={guestInfo.phone}
+                    value={passengers[currentPassengerIndex]?.phone || ""}
                     onChange={handleChange}
                     placeholder="Enter phone number"
                     className={errors.phone ? "border-red-500" : ""}
@@ -278,8 +517,9 @@ export default function GuestInformationPage() {
                     id="dateOfBirth"
                     name="dateOfBirth"
                     type="date"
-                    value={guestInfo.dateOfBirth}
+                    value={passengers[currentPassengerIndex]?.dateOfBirth || ""}
                     onChange={handleChange}
+                    placeholder="Enter date of birth"
                     className={errors.dateOfBirth ? "border-red-500" : ""}
                   />
                   {errors.dateOfBirth && <p className="text-red-500 text-sm">{errors.dateOfBirth}</p>}
@@ -289,7 +529,7 @@ export default function GuestInformationPage() {
                   <Input
                     id="nationality"
                     name="nationality"
-                    value={guestInfo.nationality}
+                    value={passengers[currentPassengerIndex]?.nationality || ""}
                     onChange={handleChange}
                     placeholder="Enter nationality"
                     className={errors.nationality ? "border-red-500" : ""}
@@ -300,13 +540,11 @@ export default function GuestInformationPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="passportNumber">
-                    Passport Number <span className="text-red-500">*</span>
-                  </Label>
+                  <Label htmlFor="passportNumber">Passport Number</Label>
                   <Input
                     id="passportNumber"
                     name="passportNumber"
-                    value={guestInfo.passportNumber}
+                    value={passengers[currentPassengerIndex]?.passportNumber || ""}
                     onChange={handleChange}
                     placeholder="Enter passport number"
                     className={errors.passportNumber ? "border-red-500" : ""}
@@ -314,13 +552,14 @@ export default function GuestInformationPage() {
                   {errors.passportNumber && <p className="text-red-500 text-sm">{errors.passportNumber}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="passportExpiry">Passport Expiry Date</Label>
+                  <Label htmlFor="passportExpiry">Passport Expiry</Label>
                   <Input
                     id="passportExpiry"
                     name="passportExpiry"
                     type="date"
-                    value={guestInfo.passportExpiry}
+                    value={passengers[currentPassengerIndex]?.passportExpiry || ""}
                     onChange={handleChange}
+                    placeholder="Enter passport expiry"
                     className={errors.passportExpiry ? "border-red-500" : ""}
                   />
                   {errors.passportExpiry && <p className="text-red-500 text-sm">{errors.passportExpiry}</p>}
@@ -334,7 +573,7 @@ export default function GuestInformationPage() {
                 <Input
                   id="identityCardNumber"
                   name="identityCardNumber"
-                  value={guestInfo.identityCardNumber}
+                  value={passengers[currentPassengerIndex]?.identityCardNumber || ""}
                   onChange={handleChange}
                   placeholder="Enter identity card number (if applicable)"
                   className={errors.identityCardNumber ? "border-red-500" : ""}
@@ -342,18 +581,27 @@ export default function GuestInformationPage() {
                 {errors.identityCardNumber && <p className="text-red-500 text-sm">{errors.identityCardNumber}</p>}
                 <p className="text-gray-400 text-xs">Not required for children under 14 years old</p>
               </div>
-
-              <CardFooter className="flex justify-between pt-6 px-0">
-                <Button type="button" variant="outline" onClick={() => router.back()}>
-                  Back
-                </Button>
-                <Button type="submit" disabled={loading} className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90">
-                  {loading ? "Saving..." : "Continue"}
-                  <ChevronRight className="ml-1 h-4 w-4" />
-                </Button>
-              </CardFooter>
             </form>
           </CardContent>
+          <CardFooter className="flex justify-between pt-6 px-6">
+            <Button
+              type="button"
+              onClick={goToPreviousPassenger}
+              disabled={currentPassengerIndex === 0 || loading}
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <Button
+              type="submit"
+              form="guestInfoForm"
+              disabled={loading}
+              className="bg-[#0f2d3c] hover:bg-[#0f2d3c]/90"
+            >
+              {loading ? "Saving..." : currentPassengerIndex === totalPassengers - 1 ? "Submit" : "Next"}
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </CardFooter>
         </Card>
       </div>
     </main>

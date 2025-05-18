@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
 import supabaseClient from "@/lib/supabase"
+import { sha256 } from "js-sha256"
 
 export default function SetPasswordPage() {
   const [password, setPassword] = useState("")
@@ -112,10 +113,11 @@ export default function SetPasswordPage() {
       }
 
       // Update the user's password and set account status to verified
+      const hashedPassword = sha256(password)
       const { error: updateError } = await supabaseClient
         .from("users")
         .update({
-          passwordhash: password, // In a real app, you would hash this password
+          passwordhash: hashedPassword, // Store hashed password
           accountstatus: "verified",
         })
         .eq("username", email)

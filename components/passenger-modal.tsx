@@ -3,8 +3,7 @@
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface PassengerDetails {
   adults: number
@@ -166,24 +165,17 @@ export default function PassengerModal({
 
           <div className="space-y-2">
             <h3 className="text-sm font-medium">Cabin Class</h3>
-            <RadioGroup value={details.travelClass} onValueChange={handleClassChange}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="economy-saver" id="economy-saver" />
-                <Label htmlFor="economy-saver">Economy Saver</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="economy-flex" id="economy-flex" />
-                <Label htmlFor="economy-flex">Economy Flex</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="business" id="business" />
-                <Label htmlFor="business">Business</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="first" id="first" />
-                <Label htmlFor="first">First Class</Label>
-              </div>
-            </RadioGroup>
+            <Select value={details.travelClass} onValueChange={handleClassChange}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select cabin class" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="economy-saver">Economy Saver</SelectItem>
+                <SelectItem value="economy-flex">Economy Flex</SelectItem>
+                <SelectItem value="business">Business</SelectItem>
+                <SelectItem value="first">First Class</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div className="flex justify-end">

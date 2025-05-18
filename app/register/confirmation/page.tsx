@@ -16,6 +16,9 @@ export default function ConfirmationPage() {
   const [updateSuccess, setUpdateSuccess] = useState(false)
   const router = useRouter()
 
+  const [contactEmail, setContactEmail] = useState("")
+  const [contactPhone, setContactPhone] = useState("")
+
   useEffect(() => {
     // Get email from session storage
     const storedEmail = sessionStorage.getItem("registrationEmail")
