@@ -2,339 +2,346 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, Check, ArrowLeft, Home } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import supabaseClient from "@/lib/supabase"
+
+interface Passenger {
+  id: number
+  firstName: string
+  lastName: string
+  dateOfBirth: string
+  nationality: string
+  passportNumber: string
+}
+
+interface Seat {
+  seat_id: string
+  seat_number: string
+  seat_class: string
+  price: number
+  isReturn: boolean
+}
+
+interface Flight {
+  id: string
+  flight_number: string
+  departure_airport: string
+  arrival_airport: string
+  departure_time: string
+  arrival_time: string
+  airline: string
+  price: number
+}
 
 interface Ticket {
-  ticketid: string
-  ticketnumber: string
-  bookingid: string
-  flightid: number
-  passengerid: string
-  seatid: number
-  status: string
-  ticketprice: number
-  classid: number
-  flights?: any
-  passengers?: any
-  seats?: any
+  id: string
+  booking_id: string
+  passenger_name: string
+  flight_id: string
+  seat_id: string
+  flight_details: Flight
+  seat_details: {
+    seat_number: string
+    seat_class: string
+  }
 }
 
 export default function TicketConfirmationPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [bookingId, setBookingId] = useState<string | null>(null)
-  const [bookingReference, setBookingReference] = useState<string | null>(null)
+  const supabase = createClientComponentClient()
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [contactEmail, setContactEmail] = useState<string | null>(null)
+  const [bookingId, setBookingId] = useState<string | null>(null)
+  const [passengers, setPassengers] = useState<Passenger[]>([])
+  const [selectedSeats, setSelectedSeats] = useState<Seat[]>([])
+  const [departureFlight, setDepartureFlight] = useState<Flight | null>(null)
+  const [returnFlight, setReturnFlight] = useState<Flight | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState<boolean>(false)
 
-  const fetchTicketDetails = async () => {
+  useEffect(() => {
+    const fetchTicketDetails = async () => {
+      try {
+        // Get booking ID
+        const storedBookingId = sessionStorage.getItem("bookingId")
+        if (storedBookingId) {
+          setBookingId(storedBookingId)
+        } else {
+          throw new Error("Booking ID not found")
+        }
+
+        // Get passenger information
+        const storedPassengers = sessionStorage.getItem("passengers")
+        if (storedPassengers) {
+          setPassengers(JSON.parse(storedPassengers))
+        }
+
+        // Get selected seats
+        const storedSeats = sessionStorage.getItem("selectedSeats")
+        if (storedSeats) {
+          setSelectedSeats(JSON.parse(storedSeats))
+        }
+
+        // Get flight details
+        const departureFightId = sessionStorage.getItem("selectedDepartureFlight")
+        const returnFlightId = sessionStorage.getItem("selectedReturnFlight")
+
+        if (departureFightId) {
+          const { data: departureData, error: departureError } = await supabase
+            .from("flights")
+            .select("*")
+            .eq("id", departureFightId)
+            .single()
+
+          if (departureError) throw departureError
+          setDepartureFlight(departureData)
+        }
+
+        if (returnFlightId) {
+          const { data: returnData, error: returnError } = await supabase
+            .from("flights")
+            .select("*")
+            .eq("id", returnFlightId)
+            .single()
+
+          if (returnError) throw returnError
+          setReturnFlight(returnData)
+        }
+
+        // Check if tickets exist for this booking
+        const { data: existingTickets, error: ticketsError } = await supabase
+          .from("tickets")
+          .select("*")
+          .eq("booking_id", storedBookingId)
+
+        if (ticketsError) throw ticketsError
+
+        // If tickets don't exist, create them
+        if (!existingTickets || existingTickets.length === 0) {
+          await createTickets(storedBookingId)
+        } else {
+          // Fetch ticket details with flight and seat information
+          const ticketsWithDetails = await Promise.all(
+            existingTickets.map(async (ticket) => {
+              // Get flight details
+              const { data: flightData } = await supabase
+                .from("flights")
+                .select("*")
+                .eq("id", ticket.flight_id)
+                .single()
+
+              // Get seat details
+              const { data: seatData } = await supabase
+                .from("seats")
+                .select("seat_number, seat_class")
+                .eq("id", ticket.seat_id)
+                .single()
+
+              return {
+                ...ticket,
+                flight_details: flightData,
+                seat_details: seatData,
+              }
+            }),
+          )
+
+          setTickets(ticketsWithDetails)
+        }
+      } catch (error: any) {
+        console.error("Error fetching ticket details:", error.message)
+        setError("Failed to load ticket details. Please try again.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTicketDetails()
+  }, [supabase])
+
+  const createTickets = async (bookingId: string) => {
+    try {
+      const ticketsToCreate = []
+
+      // Create tickets for departure flight
+      for (let i = 0; i < passengers.length; i++) {
+        const passenger = passengers[i]
+        const seat = selectedSeats.filter((s) => !s.isReturn)[i]
+
+        if (passenger && seat && departureFlight) {
+          ticketsToCreate.push({
+            booking_id: bookingId,
+            passenger_name: `${passenger.firstName} ${passenger.lastName}`,
+            flight_id: departureFlight.id,
+            seat_id: seat.seat_id,
+          })
+        }
+      }
+
+      // Create tickets for return flight if applicable
+      if (returnFlight) {
+        for (let i = 0; i < passengers.length; i++) {
+          const passenger = passengers[i]
+          const seat = selectedSeats.filter((s) => s.isReturn)[i]
+
+          if (passenger && seat && returnFlight) {
+            ticketsToCreate.push({
+              booking_id: bookingId,
+              passenger_name: `${passenger.firstName} ${passenger.lastName}`,
+              flight_id: returnFlight.id,
+              seat_id: seat.seat_id,
+            })
+          }
+        }
+      }
+
+      // Insert tickets into database
+      const { data: createdTickets, error: insertError } = await supabase
+        .from("tickets")
+        .insert(ticketsToCreate)
+        .select()
+
+      if (insertError) throw insertError
+
+      // Fetch ticket details with flight and seat information
+      const ticketsWithDetails = await Promise.all(
+        ticketsToCreate.map(async (ticket, index) => {
+          // Get flight details
+          const { data: flightData } = await supabase.from("flights").select("*").eq("id", ticket.flight_id).single()
+
+          // Get seat details
+          const { data: seatData } = await supabase
+            .from("seats")
+            .select("seat_number, seat_class")
+            .eq("id", ticket.seat_id)
+            .single()
+
+          return {
+            ...ticket,
+            id: createdTickets ? createdTickets[index].id : "",
+            flight_details: flightData,
+            seat_details: seatData,
+          }
+        }),
+      )
+
+      setTickets(ticketsWithDetails)
+    } catch (error: any) {
+      console.error("Error creating tickets:", error.message)
+      throw error
+    }
+  }
+
+  const handleSendEmail = async () => {
     try {
       setLoading(true)
 
-      // Get booking ID from session storage
-      const storedBookingId = sessionStorage.getItem("bookingId")
-      const storedBookingReference = sessionStorage.getItem("bookingReference")
-      const storedContactEmail = sessionStorage.getItem("contactEmail")
-
-      if (!storedBookingId) {
-        throw new Error("Booking ID not found")
+      // Get contact information
+      const storedContactInfo = sessionStorage.getItem("contactInfo")
+      if (!storedContactInfo) {
+        throw new Error("Contact information not found")
       }
 
-      setBookingId(storedBookingId)
-      setBookingReference(storedBookingReference)
-      setContactEmail(storedContactEmail)
+      const contactInfo = JSON.parse(storedContactInfo)
 
-      console.log("Fetching tickets for booking ID:", storedBookingId)
+      // Send email with ticket confirmation
+      const response = await fetch("/api/send-ticket-confirmation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: contactInfo.email,
+          name: contactInfo.name,
+          tickets: tickets,
+          bookingId: bookingId,
+        }),
+      })
 
-      // Fetch tickets with related data
-      const { data: ticketsData, error: ticketsError } = await supabaseClient
-        .from("tickets")
-        .select(`
-          *,
-          flights(*),
-          passengers(*),
-          seats(*)
-        `)
-        .eq("bookingid", storedBookingId)
-
-      if (ticketsError) {
-        console.error("Error fetching tickets:", ticketsError)
-        throw new Error(`Error fetching tickets: ${ticketsError.message}`)
+      if (!response.ok) {
+        throw new Error("Failed to send email")
       }
 
-      console.log("Tickets data:", ticketsData)
-
-      if (!ticketsData || ticketsData.length === 0) {
-        console.warn("No tickets found for booking ID:", storedBookingId)
-
-        // Try to create tickets if none exist
-        const success = await createTicketsForBooking(storedBookingId)
-        if (success) {
-          // Fetch tickets again after creation
-          const { data: newTicketsData, error: newTicketsError } = await supabaseClient
-            .from("tickets")
-            .select(`
-              *,
-              flights(*),
-              passengers(*),
-              seats(*)
-            `)
-            .eq("bookingid", storedBookingId)
-
-          if (newTicketsError) {
-            console.error("Error fetching new tickets:", newTicketsError)
-          } else if (newTicketsData && newTicketsData.length > 0) {
-            console.log("Successfully created and fetched tickets:", newTicketsData)
-            setTickets(newTicketsData)
-          }
-        }
-      } else {
-        setTickets(ticketsData)
-      }
-    } catch (err: any) {
-      console.error("Error fetching ticket details:", err)
-      setError(err.message || "Failed to load ticket details")
+      setEmailSent(true)
+    } catch (error: any) {
+      console.error("Error sending email:", error.message)
+      setError("Failed to send email. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
-  // Add a new function to create tickets if they don't exist
-  const createTicketsForBooking = async (bookingId: string): Promise<boolean> => {
-    try {
-      console.log("Attempting to create tickets for booking:", bookingId)
+  const handleFinish = () => {
+    // Clear session storage
+    sessionStorage.removeItem("selectedDepartureFlight")
+    sessionStorage.removeItem("selectedReturnFlight")
+    sessionStorage.removeItem("selectedSeats")
+    sessionStorage.removeItem("passengers")
+    sessionStorage.removeItem("contactInfo")
+    sessionStorage.removeItem("bookingId")
+    sessionStorage.removeItem("totalPrice")
 
-      // Get passenger records for this booking
-      const { data: passengerData, error: passengerError } = await supabaseClient
-        .from("passengers")
-        .select("*")
-        .eq("bookingid", bookingId)
-
-      if (passengerError || !passengerData || passengerData.length === 0) {
-        console.error("No passengers found for booking:", bookingId)
-        return false
-      }
-
-      // Get flight information from session storage
-      const departureFlight = JSON.parse(sessionStorage.getItem("selectedDepartureFlight") || "null")
-      const returnFlight = JSON.parse(sessionStorage.getItem("selectedReturnFlight") || "null")
-      const departureSeat = JSON.parse(sessionStorage.getItem("selectedDepartureSeat") || "null")
-      const returnSeat = JSON.parse(sessionStorage.getItem("selectedReturnSeat") || "null")
-
-      if (!departureFlight || !departureSeat) {
-        console.error("Missing flight or seat information")
-        return false
-      }
-
-      // Create tickets for each passenger
-      for (const passenger of passengerData) {
-        // Create departure ticket
-        const { error: departureTicketError } = await supabaseClient.from("tickets").insert({
-          bookingid: bookingId,
-          flightid: departureFlight.flightId,
-          passengerid: passenger.passengerid,
-          seatid: departureSeat.seatid,
-          status: "Confirmed",
-          ticketprice: departureFlight.price || 0,
-          classid: departureSeat.classid || 1,
-          ticketnumber: generateTicketNumber(),
-        })
-
-        if (departureTicketError) {
-          console.error("Error creating departure ticket:", departureTicketError)
-          continue
-        }
-
-        // Create return ticket if applicable
-        if (returnFlight && returnSeat) {
-          const { error: returnTicketError } = await supabaseClient.from("tickets").insert({
-            bookingid: bookingId,
-            flightid: returnFlight.flightId,
-            passengerid: passenger.passengerid,
-            seatid: returnSeat.seatid,
-            status: "Confirmed",
-            ticketprice: returnFlight.price || 0,
-            classid: returnSeat.classid || 1,
-            ticketnumber: generateTicketNumber(),
-          })
-
-          if (returnTicketError) {
-            console.error("Error creating return ticket:", returnTicketError)
-          }
-        }
-      }
-
-      return true
-    } catch (err) {
-      console.error("Error creating tickets:", err)
-      return false
-    }
-  }
-
-  // Add the generateTicketNumber function
-  const generateTicketNumber = () => {
-    const prefix = "CA"
-    const randomDigits = Math.floor(Math.random() * 10000000)
-      .toString()
-      .padStart(7, "0")
-    return `${prefix}${randomDigits}`
-  }
-
-  useEffect(() => {
-    fetchTicketDetails()
-  }, [])
-
-  const handleReturnHome = () => {
+    // Navigate to home page
     router.push("/")
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0f2d3c] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
-      </div>
-    )
+    return <div className="flex justify-center items-center min-h-screen">Loading ticket details...</div>
   }
 
   if (error) {
-    return (
-      <div className="min-h-screen bg-[#0f2d3c] flex flex-col items-center justify-center p-4">
-        <Alert variant="destructive" className="max-w-md">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <Button onClick={() => router.push("/")} className="mt-4">
-          Return to Home
-        </Button>
-      </div>
-    )
+    return <div className="flex justify-center items-center min-h-screen text-red-500">{error}</div>
   }
 
   return (
-    <main className="min-h-screen bg-[#0f2d3c] pb-20 text-white">
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex items-start max-w-3xl mx-auto mb-8">
-          <button onClick={() => router.push("/")} className="mr-4 text-white hover:text-gray-300 transition-colors">
-            <ArrowLeft className="h-6 w-6" />
-          </button>
-          <h1 className="text-2xl font-bold text-white">Ticket Confirmation</h1>
-        </div>
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-6">Ticket Confirmation</h1>
 
-        {/* Success Message */}
-        <section className="mb-6 bg-green-600 rounded-lg p-4 max-w-3xl mx-auto">
-          <div className="flex items-center">
-            <Check className="h-6 w-6 mr-2" />
-            <div>
-              <h2 className="text-xl font-bold">Payment Successful</h2>
-              <p>Your payment has been processed and your tickets are confirmed.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Booking Reference */}
-        <section className="mb-6 bg-[#1a3a4a] rounded-lg p-4 max-w-3xl mx-auto">
-          <h2 className="text-xl font-bold mb-2">Booking Details</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="font-medium">Booking Reference</p>
-              <p className="text-lg">{bookingReference}</p>
-            </div>
-            {contactEmail && (
-              <div>
-                <p className="font-medium">Confirmation Email</p>
-                <p>Sent to: {contactEmail}</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Tickets */}
-        <section className="mb-6 max-w-3xl mx-auto">
-          <h2 className="text-xl font-bold mb-4">Your Tickets</h2>
-
-          {tickets.length > 0 ? (
-            <div className="space-y-4">
-              {tickets.map((ticket) => (
-                <div key={ticket.ticketid} className="bg-[#1a3a4a] rounded-lg p-4 print:border print:border-gray-300">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-lg font-bold">
-                        {ticket.flights?.departureairport} → {ticket.flights?.arrivalairport}
-                      </h3>
-                      <p className="text-sm text-gray-300">Flight {ticket.flights?.flightnumber}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold">Ticket #{ticket.ticketnumber}</p>
-                      <p className="text-sm text-gray-300">
-                        {ticket.status === "Confirmed" ? (
-                          <span className="text-green-400">✓ Confirmed</span>
-                        ) : (
-                          ticket.status
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <p className="font-medium">Passenger</p>
-                      <p>
-                        {ticket.passengers?.firstname} {ticket.passengers?.lastname}
-                      </p>
-
-                      {ticket.passengers?.passportnumber && (
-                        <p className="text-sm text-gray-300">Passport: {ticket.passengers?.passportnumber}</p>
-                      )}
-                      {ticket.passengers?.identitycardnumber && (
-                        <p className="text-sm text-gray-300">ID Card: {ticket.passengers?.identitycardnumber}</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium">Seat</p>
-                      <p>
-                        {ticket.seats
-                          ? ticket.seats.seatnumber
-                          : typeof ticket.seatid === "number"
-                            ? `Seat ID: ${ticket.seatid}`
-                            : "Unknown"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="font-medium">Departure Time</p>
-                      <p>
-                        {ticket.flights?.departuretime
-                          ? new Date(ticket.flights.departuretime).toLocaleString()
-                          : "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-medium">Price</p>
-                      <p>{new Intl.NumberFormat("vi-VN").format(ticket.ticketprice || 0)} VND</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p>No tickets found.</p>
-          )}
-        </section>
-
-        {/* Actions */}
-        <div className="flex justify-center max-w-3xl mx-auto">
-          <Button onClick={handleReturnHome} className="bg-green-600 hover:bg-green-700">
-            <Home className="h-4 w-4 mr-2" />
-            Return to Home Page
-          </Button>
-        </div>
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold mb-4">Booking ID: {bookingId}</h2>
       </div>
-    </main>
+
+      <div className="grid grid-cols-1 gap-6">
+        {tickets.map((ticket, index) => (
+          <div key={index} className="p-4 border rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Ticket #{index + 1}</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="font-medium">Passenger</h3>
+                <p>{ticket.passenger_name}</p>
+              </div>
+
+              <div>
+                <h3 className="font-medium">Flight</h3>
+                <p>Flight Number: {ticket.flight_details?.flight_number}</p>
+                <p>Airline: {ticket.flight_details?.airline}</p>
+                <p>From: {ticket.flight_details?.departure_airport}</p>
+                <p>To: {ticket.flight_details?.arrival_airport}</p>
+                <p>
+                  Departure:{" "}
+                  {ticket.flight_details ? new Date(ticket.flight_details.departure_time).toLocaleString() : ""}
+                </p>
+                <p>
+                  Arrival: {ticket.flight_details ? new Date(ticket.flight_details.arrival_time).toLocaleString() : ""}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-medium">Seat</h3>
+                <p>Seat Number: {ticket.seat_details?.seat_number}</p>
+                <p>Class: {ticket.seat_details?.seat_class}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-end mt-6 space-x-4">
+        <Button onClick={handleSendEmail} disabled={emailSent || loading} variant={emailSent ? "outline" : "default"}>
+          {emailSent ? "Email Sent" : "Send Tickets by Email"}
+        </Button>
+        <Button onClick={handleFinish}>Finish</Button>
+      </div>
+    </div>
   )
 }
