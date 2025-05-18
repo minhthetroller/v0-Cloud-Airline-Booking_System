@@ -23,7 +23,6 @@ export default function PaymentPage() {
   const [bookingReference, setBookingReference] = useState<string | null>(null)
   const [totalPrice, setTotalPrice] = useState<number>(0)
   const [paymentId, setPaymentId] = useState<string | null>(null)
-  const [totalPassengers, setTotalPassengers] = useState(1)
 
   // Card payment state
   const [cardNumber, setCardNumber] = useState("")
@@ -40,13 +39,11 @@ export default function PaymentPage() {
     const storedBookingReference = sessionStorage.getItem("bookingReference")
     const storedTotalPrice = sessionStorage.getItem("totalPrice")
     const storedPaymentId = sessionStorage.getItem("paymentId")
-    const storedTotalPassengers = sessionStorage.getItem("totalPassengers")
 
     if (storedBookingId) setBookingId(storedBookingId)
     if (storedBookingReference) setBookingReference(storedBookingReference)
     if (storedTotalPrice) setTotalPrice(Number.parseFloat(storedTotalPrice))
     if (storedPaymentId) setPaymentId(storedPaymentId)
-    if (storedTotalPassengers) setTotalPassengers(Number.parseInt(storedTotalPassengers, 10))
 
     // Create payment record in database
     const createPaymentRecord = async () => {
@@ -450,78 +447,154 @@ export default function PaymentPage() {
 
         <h2 className="text-xl font-bold mb-4 max-w-2xl mx-auto">Payment options</h2>
 
-        <Tabs defaultValue="card" onValueChange={(value) => setPaymentMethod(value as "card" | "bank")}>
-          <TabsList>
-            <TabsTrigger value="card">
-              <CreditCard className="h-5 w-5 mr-2" />
-              Credit Card
+        <Tabs
+          defaultValue="card"
+          onValueChange={(value) => setPaymentMethod(value as "card" | "bank")}
+          className="max-w-2xl mx-auto"
+        >
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="card" className="flex items-center">
+              <CreditCard className="mr-2 h-4 w-4" />
+              Credit/Debit Card
             </TabsTrigger>
-            <TabsTrigger value="bank">
-              <Building className="h-5 w-5 mr-2" />
+            <TabsTrigger value="bank" className="flex items-center">
+              <Building className="mr-2 h-4 w-4" />
               Bank Transfer
             </TabsTrigger>
           </TabsList>
+
           <TabsContent value="card">
-            {/* Card payment form */}
-            <form onSubmit={handlePayment} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="cardNumber">Card Number</Label>
-                <Input
-                  id="cardNumber"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                  placeholder="1234 5678 9012 3456"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cardName">Card Name</Label>
-                <Input
-                  id="cardName"
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  placeholder="John Doe"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expiryDate">Expiry Date</Label>
-                <Input
-                  id="expiryDate"
-                  value={expiryDate}
-                  onChange={(e) => setExpiryDate(formatExpiryDate(e.target.value))}
-                  placeholder="MM/YY"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cvv">CVV</Label>
-                <Input
-                  id="cvv"
-                  value={cvv}
-                  onChange={(e) => setCvv(e.target.value)}
-                  placeholder="123"
-                  type="password"
-                />
-              </div>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Processing..." : "Pay Now"}
-              </Button>
-            </form>
+            <div className="bg-[#1a3a4a] rounded-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Credit/Debit Card Payment</h2>
+
+              <form onSubmit={handlePayment} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cardNumber">Card Number</Label>
+                  <Input
+                    id="cardNumber"
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                    placeholder="4111 1111 1111 1111"
+                    maxLength={19}
+                    required
+                    className="bg-white text-black"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cardName">Cardholder Name</Label>
+                  <Input
+                    id="cardName"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
+                    placeholder="John Doe"
+                    required
+                    className="bg-white text-black"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="expiryDate">Expiry Date (MM/YY)</Label>
+                    <Input
+                      id="expiryDate"
+                      value={expiryDate}
+                      onChange={(e) => setExpiryDate(formatExpiryDate(e.target.value))}
+                      placeholder="MM/YY"
+                      maxLength={5}
+                      required
+                      className="bg-white text-black"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="cvv">CVV</Label>
+                    <Input
+                      id="cvv"
+                      value={cvv}
+                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, ""))}
+                      placeholder="123"
+                      maxLength={3}
+                      required
+                      className="bg-white text-black"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4">
+                  <div className="flex items-center space-x-2">
+                    <img src="/visa-logo-generic.png" alt="Visa" className="h-8" />
+                    <img src="/mastercard-logo.png" alt="Mastercard" className="h-8" />
+                    <img src="/amex-logo.png" alt="American Express" className="h-8" />
+                    <img src="/generic-construction-logo.png" alt="JCB" className="h-8" />
+                  </div>
+                </div>
+
+                <div className="pt-4">
+                  <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={loading}>
+                    {loading ? "Processing..." : "Pay Now"}
+                  </Button>
+                </div>
+
+                <p className="text-sm text-gray-300 mt-2">
+                  For testing, use card number 4111 1111 1111 1111, any future expiry date, and any 3-digit CVV.
+                </p>
+              </form>
+            </div>
           </TabsContent>
+
           <TabsContent value="bank">
-            {/* Bank transfer instructions */}
-            <div className="space-y-4">
-              <p>Please follow the instructions below to complete your bank transfer:</p>
-              <Button onClick={handleGenerateQr} disabled={bankQrShown}>
-                Generate QR Code
-              </Button>
-              {bankQrShown && (
-                <div className="bg-white rounded-lg p-6">
-                  {/* QR Code component */}
-                  <p>QR Code will be displayed here</p>
+            <div className="bg-[#1a3a4a] rounded-lg p-6">
+              <h2 className="text-xl font-bold mb-4">Bank Transfer</h2>
+
+              {bankQrShown ? (
+                <div className="flex flex-col items-center">
+                  <div className="bg-white p-4 rounded-lg mb-4">
+                    <img src="/placeholder-1b948.png" alt="Bank transfer QR code" className="w-48 h-48" />
+                  </div>
+
+                  <div className="text-center mb-6">
+                    <p className="font-bold">Scan this QR code with your banking app</p>
+                    <p className="text-sm text-gray-300 mt-2">
+                      Amount: {new Intl.NumberFormat("vi-VN").format(totalPrice || 1500000)} VND
+                      <br />
+                      Reference: {bookingReference || "Your booking reference"}
+                    </p>
+                  </div>
+
+                  <Button onClick={handlePayment} className="bg-green-600 hover:bg-green-700" disabled={loading}>
+                    {loading ? "Verifying Payment..." : "I've Completed the Transfer"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <p className="mb-6 text-center">Generate a QR code to make a bank transfer using your banking app.</p>
+
+                  <Button onClick={handleGenerateQr} className="bg-blue-600 hover:bg-blue-700">
+                    Generate QR Code
+                  </Button>
                 </div>
               )}
             </div>
           </TabsContent>
         </Tabs>
+      </div>
+
+      {/* Sticky bar at the bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-10 bg-white p-4 shadow-lg">
+        <div className="container mx-auto flex items-center justify-between">
+          <Button
+            variant="outline"
+            className="border-[#0f2d3c] text-[#0f2d3c]"
+            onClick={() => router.push("/confirmation")}
+          >
+            Back to Confirmation
+          </Button>
+
+          <div className="text-xl font-bold text-[#0f2d3c]">
+            Total: {new Intl.NumberFormat("vi-VN").format(totalPrice || 1500000)} VND
+          </div>
+        </div>
       </div>
     </main>
   )

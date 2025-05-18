@@ -74,69 +74,50 @@ export default function SetPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
+
+    if (loading) return
 
     try {
-      // Validate passwords match
+      setLoading(true)
+      setError(null)
+
+      // Validate password
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters long")
+        return
+      }
+
       if (password !== confirmPassword) {
-        throw new Error("Passwords do not match")
+        setError("Passwords do not match")
+        return
       }
 
-      // Validate password meets requirements
-      if (!Object.values(validations).every((valid) => valid)) {
-        throw new Error("Password does not meet all requirements")
-      }
-
-      // If we don't have an email, prompt the user to enter it
-      if (!email) {
-        const emailInput = prompt("Please enter your email address to complete registration:")
-        if (!emailInput) {
-          throw new Error("Email is required to complete registration")
-        }
-        setEmail(emailInput)
-      }
-
-      // Find the user record by email
-      const { data: userData, error: userQueryError } = await supabaseClient
-        .from("users")
-        .select("*")
-        .eq("username", email)
-        .single()
-
-      if (userQueryError) {
-        throw new Error(`Error finding user account: ${userQueryError.message}`)
-      }
-
-      if (!userData) {
-        throw new Error("User account not found. Please complete registration first.")
-      }
-
-      // Update the user's password and set account status to verified
+      // Hash the password using js-sha256
       const hashedPassword = sha256(password)
+
+      // Get the user ID from the URL
+      const userId = searchParams.get("userId")
+
+      if (!userId) {
+        setError("User ID not found")
+        return
+      }
+
+      // Update the user's password in the database
       const { error: updateError } = await supabaseClient
         .from("users")
         .update({
-          passwordhash: hashedPassword, // Store hashed password
-          accountstatus: "verified",
+          password: hashedPassword, // Store the hashed password
+          isactive: true,
         })
-        .eq("username", email)
+        .eq("userid", userId)
 
       if (updateError) {
-        throw new Error(`Error updating user account: ${updateError.message}`)
+        throw updateError
       }
 
-      // Success! Show success message and redirect after a delay
-      setSuccess(true)
-      setTimeout(() => {
-        // Clear session storage
-        sessionStorage.removeItem("registrationEmail")
-        sessionStorage.removeItem("registrationToken")
-        sessionStorage.removeItem("customerData")
-
-        // Redirect to success page
-        router.push("/register/success")
-      }, 2000)
+      // Redirect to success page
+      router.push("/register/success")
     } catch (err: any) {
       console.error("Error setting password:", err)
       setError(err.message || "Failed to set password. Please try again.")

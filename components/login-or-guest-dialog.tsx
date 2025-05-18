@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import PassengerInformationForm from "@/components/passenger-information-form"
 
 interface LoginOrGuestDialogProps {
   open: boolean
@@ -29,6 +30,8 @@ export default function LoginOrGuestDialog({
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPassengerForm, setShowPassengerForm] = useState(false)
+  const [totalPassengers, setTotalPassengers] = useState(1)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,7 +50,19 @@ export default function LoginOrGuestDialog({
       sessionStorage.setItem("isLoggedIn", "true")
       sessionStorage.setItem("userEmail", email)
 
-      // Simulate successful login
+      // Check if we need to collect passenger information
+      const totalPassengersStr = sessionStorage.getItem("totalPassengers")
+      if (totalPassengersStr) {
+        const passengerCount = Number.parseInt(totalPassengersStr)
+        if (passengerCount > 1) {
+          // If multiple passengers, show the passenger form
+          setTotalPassengers(passengerCount)
+          setShowPassengerForm(true)
+          return
+        }
+      }
+
+      // If only one passenger or passenger count not available, proceed with login success
       onLoginSuccess()
     } catch (err: any) {
       console.error("Login error:", err)
@@ -57,74 +72,96 @@ export default function LoginOrGuestDialog({
     }
   }
 
+  const handlePassengerFormComplete = (passengers: any[]) => {
+    // Store passengers in session storage
+    sessionStorage.setItem("passengers", JSON.stringify(passengers))
+
+    // Proceed with login success
+    onLoginSuccess()
+  }
+
+  const handlePassengerFormCancel = () => {
+    setShowPassengerForm(false)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{showLoginForm ? "Login" : "Continue Booking"}</DialogTitle>
-          <DialogDescription>
-            {showLoginForm
-              ? "Please enter your credentials to continue."
-              : "Would you like to login or continue as a guest?"}
-          </DialogDescription>
-        </DialogHeader>
-
-        {showLoginForm ? (
-          <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="your.email@example.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <Button type="button" variant="outline" onClick={() => setShowLoginForm(false)}>
-                Back
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Logging in..." : "Login"}
-              </Button>
-            </div>
-          </form>
+        {showPassengerForm ? (
+          <PassengerInformationForm
+            totalPassengers={totalPassengers}
+            onComplete={handlePassengerFormComplete}
+            onCancel={handlePassengerFormCancel}
+          />
         ) : (
-          <div className="flex flex-col space-y-4">
-            <Button onClick={() => setShowLoginForm(true)}>Login</Button>
-            <Button variant="outline" onClick={onGuestContinue}>
-              Continue as Guest
-            </Button>
-          </div>
+          <>
+            <DialogHeader>
+              <DialogTitle>{showLoginForm ? "Login" : "Continue Booking"}</DialogTitle>
+              <DialogDescription>
+                {showLoginForm
+                  ? "Please enter your credentials to continue."
+                  : "Would you like to login or continue as a guest?"}
+              </DialogDescription>
+            </DialogHeader>
+
+            {showLoginForm ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="your.email@example.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      placeholder="••••••••"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex justify-between">
+                  <Button type="button" variant="outline" onClick={() => setShowLoginForm(false)}>
+                    Back
+                  </Button>
+                  <Button type="submit" disabled={loading}>
+                    {loading ? "Logging in..." : "Login"}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-col space-y-4">
+                <Button onClick={() => setShowLoginForm(true)}>Login</Button>
+                <Button variant="outline" onClick={onGuestContinue}>
+                  Continue as Guest
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>
