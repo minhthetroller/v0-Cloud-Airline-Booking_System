@@ -4,184 +4,251 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, CheckCircle2 } from "lucide-react"
+import { AlertCircle, Check, Eye, EyeOff } from "lucide-react"
+import Image from "next/image"
+import supabaseClient from "@/lib/supabase"
+import { sha256 } from "js-sha256"
 
 export default function SetPasswordPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
-  const supabase = createClientComponentClient()
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
+  const [email, setEmail] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Extract user ID from URL or session
+  // Password validation states
+  const [validations, setValidations] = useState({
+    length: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    special: false,
+    match: false,
+  })
+
   useEffect(() => {
-    const fetchUserId = async () => {
-      // First try to get userId from URL
-      const urlUserId = searchParams.get("userId")
+    // Get token and email from URL query parameters
+    const urlToken = searchParams.get("token")
+    const urlEmail = searchParams.get("email")
 
-      if (urlUserId) {
-        setUserId(urlUserId)
-        return
-      }
+    if (urlToken) {
+      setToken(urlToken)
 
-      // If not in URL, try to get from session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (session?.user?.id) {
-        setUserId(session.user.id)
-        return
-      }
-
-      // If still no userId, check if there's a token in the URL
-      const token = searchParams.get("token")
-
-      if (token) {
-        try {
-          // Try to exchange the token for a session
-          const { data, error } = await supabase.auth.exchangeCodeForSession(token)
-
-          if (error) throw error
-
-          if (data?.user?.id) {
-            setUserId(data.user.id)
-            return
-          }
-        } catch (error) {
-          console.error("Error exchanging token:", error)
+      // If email is in URL, use it
+      if (urlEmail) {
+        setEmail(urlEmail)
+      } else {
+        // Try to get email from session storage
+        const storedEmail = sessionStorage.getItem("registrationEmail")
+        if (storedEmail) {
+          setEmail(storedEmail)
         }
       }
-
-      // If we still don't have a userId, show an error
-      if (!userId) {
-        setError("User ID not found. Please try the password reset link again or contact support.")
-      }
+    } else {
+      // No token provided, redirect to manual verification
+      router.push("/register/manual-verification")
     }
+  }, [searchParams, router])
 
-    fetchUserId()
-  }, [searchParams, supabase])
-
-  const validatePassword = (password: string) => {
-    if (password.length < 8) {
-      return "Password must be at least 8 characters long"
-    }
-    return null
-  }
+  // Validate password as user types
+  useEffect(() => {
+    setValidations({
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
+      match: password === confirmPassword && password !== "",
+    })
+  }, [password, confirmPassword])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Reset states
-    setError(null)
-    setSuccess(false)
-
-    // Check if userId exists
-    if (!userId) {
-      setError("User ID not found. Please try the password reset link again or contact support.")
-      return
-    }
-
-    // Validate passwords
-    const passwordError = validatePassword(password)
-    if (passwordError) {
-      setError(passwordError)
-      return
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    setLoading(true)
+    if (loading) return
 
     try {
-      // Update password
-      const { error } = await supabase.auth.updateUser({ password })
+      setLoading(true)
+      setError(null)
 
-      if (error) throw error
+      // Validate password
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters long")
+        return
+      }
 
-      setSuccess(true)
+      if (password !== confirmPassword) {
+        setError("Passwords do not match")
+        return
+      }
 
-      // Redirect after a short delay
-      setTimeout(() => {
-        router.push("/profile")
-      }, 2000)
-    } catch (error: any) {
-      console.error("Error setting password:", error)
-      setError(error.message || "Failed to set password. Please try again.")
+      // Hash the password using js-sha256
+      const hashedPassword = sha256(password)
+
+      // Get the user ID from the URL
+      const userId = searchParams.get("userId")
+
+      if (!userId) {
+        setError("User ID not found")
+        return
+      }
+
+      // Update the user's password in the database
+      const { error: updateError } = await supabaseClient
+        .from("users")
+        .update({
+          password: hashedPassword, // Store the hashed password
+          isactive: true,
+        })
+        .eq("userid", userId)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      // Redirect to success page
+      router.push("/register/success")
+    } catch (err: any) {
+      console.error("Error setting password:", err)
+      setError(err.message || "Failed to set password. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="container mx-auto py-10 max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>Set Your Password</CardTitle>
-          <CardDescription>Create a secure password for your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+    <div className="min-h-screen bg-[#0f2d3c] flex flex-col items-center justify-center py-12 px-4">
+      <div className="max-w-md w-full bg-[#0f2d3c] rounded-lg p-8 text-center">
+        <div className="mb-8 flex justify-center">
+          <Image src="/logo.png" alt="Cloud Airline Logo" width={180} height={60} />
+        </div>
 
-          {success && (
-            <Alert className="mb-4 bg-green-50 text-green-800 border-green-200">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription>Password set successfully! Redirecting...</AlertDescription>
-            </Alert>
-          )}
+        <h1 className="text-3xl font-bold text-[#f8f5f2] mb-6">Set Your Password</h1>
 
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="Enter your new password"
-                />
-                <p className="text-xs text-gray-500">Password must be at least 8 characters long</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  placeholder="Confirm your new password"
-                />
-              </div>
+        <div className="bg-[#1a3a4a] rounded-lg p-8 mb-8">
+          {success ? (
+            <div className="bg-green-500/10 text-green-500 border border-green-500 rounded-md p-4 mb-4">
+              <p className="flex items-center">
+                <Check className="h-5 w-5 mr-2" />
+                Password set successfully! Redirecting...
+              </p>
             </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-6">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
 
-            <Button type="submit" className="w-full mt-6" disabled={loading || success}>
-              {loading ? "Setting Password..." : "Set Password"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+                <div className="space-y-2 text-left">
+                  <Label htmlFor="password" className="text-[#f8f5f2] text-left">
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5 text-gray-400" />
+                      ) : (
+                        <Eye className="h-5 w-5 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-left">
+                  <Label htmlFor="confirmPassword" className="text-[#f8f5f2] text-left">
+                    Confirm Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-5 w-5 text-gray-400" />
+                      ) : (
+                        <Eye className="h-5 w-5 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-sm text-[#f8f5f2] text-left">
+                  <p className="mb-2 text-left">Password must:</p>
+                  <ul className="space-y-1">
+                    <li className={`flex items-center ${validations.length ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.length ? "✓" : "○"}</span>
+                      Be at least 8 characters long
+                    </li>
+                    <li className={`flex items-center ${validations.uppercase ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.uppercase ? "✓" : "○"}</span>
+                      Include at least one uppercase letter
+                    </li>
+                    <li className={`flex items-center ${validations.lowercase ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.lowercase ? "✓" : "○"}</span>
+                      Include at least one lowercase letter
+                    </li>
+                    <li className={`flex items-center ${validations.number ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.number ? "✓" : "○"}</span>
+                      Include at least one number
+                    </li>
+                    <li className={`flex items-center ${validations.special ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.special ? "✓" : "○"}</span>
+                      Include at least one special character
+                    </li>
+                    <li className={`flex items-center ${validations.match ? "text-green-500" : "text-gray-400"}`}>
+                      <span className="mr-2">{validations.match ? "✓" : "○"}</span>
+                      Passwords match
+                    </li>
+                  </ul>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white"
+                  disabled={loading || !Object.values(validations).every((valid) => valid)}
+                >
+                  {loading ? "Setting Password..." : "Set Password"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
