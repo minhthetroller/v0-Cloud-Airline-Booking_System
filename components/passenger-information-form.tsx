@@ -16,7 +16,7 @@ interface PassengerFormProps {
   onCancel: () => void
 }
 
-export default function PassengerInformationForm({ totalPassengers, onComplete, onCancel }: PassengerFormProps) {
+export function PassengerInformationForm({ totalPassengers, onComplete, onCancel }: PassengerFormProps) {
   const [passengers, setPassengers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -251,3 +251,5 @@ export default function PassengerInformationForm({ totalPassengers, onComplete, 
     </div>
   )
 }
+
+export default PassengerInformationForm

@@ -22,7 +22,7 @@ interface LoginModalProps {
   onClose: () => void
 }
 
-export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
+export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -212,3 +212,5 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     </Dialog>
   )
 }
+
+export default LoginModal
