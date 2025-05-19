@@ -124,7 +124,7 @@ export default function SetPasswordPage() {
         .from("users")
         .update({
           password: hashedPassword, // Store the hashed password
-          isactive: true,
+          accountstatus: true, // Changed from isactive to accountstatus
         })
         .eq("userid", userData.userid)
 
