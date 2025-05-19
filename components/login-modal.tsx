@@ -103,6 +103,10 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       // Successfully logged in
       onClose()
 
+      sessionStorage.setItem("isLoggedIn", "true")
+      sessionStorage.setItem("userEmail", email)
+      sessionStorage.setItem("justLoggedIn", "true")
+
       // Force a refresh of the page to ensure auth state is updated
       window.location.href = "/profile"
     } catch (err: any) {

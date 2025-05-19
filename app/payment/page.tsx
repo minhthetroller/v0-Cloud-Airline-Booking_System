@@ -23,6 +23,7 @@ export default function PaymentPage() {
   const [bookingReference, setBookingReference] = useState<string | null>(null)
   const [totalPrice, setTotalPrice] = useState<number>(0)
   const [paymentId, setPaymentId] = useState<string | null>(null)
+  const [contactEmail, setContactEmail] = useState<string | null>(null)
 
   // Card payment state
   const [cardNumber, setCardNumber] = useState("")
@@ -39,11 +40,13 @@ export default function PaymentPage() {
     const storedBookingReference = sessionStorage.getItem("bookingReference")
     const storedTotalPrice = sessionStorage.getItem("totalPrice")
     const storedPaymentId = sessionStorage.getItem("paymentId")
+    const storedContactEmail = sessionStorage.getItem("contactEmail")
 
     if (storedBookingId) setBookingId(storedBookingId)
     if (storedBookingReference) setBookingReference(storedBookingReference)
     if (storedTotalPrice) setTotalPrice(Number.parseFloat(storedTotalPrice))
     if (storedPaymentId) setPaymentId(storedPaymentId)
+    if (storedContactEmail) setContactEmail(storedContactEmail)
 
     // Create payment record in database
     const createPaymentRecord = async () => {
@@ -157,20 +160,40 @@ export default function PaymentPage() {
 
   const sendConfirmationEmail = async (bookingId: string) => {
     try {
-      const contactEmail = sessionStorage.getItem("contactEmail")
+      // Get contact email from state or session storage
+      const emailToUse = contactEmail || sessionStorage.getItem("contactEmail")
 
-      if (!contactEmail) {
+      if (!emailToUse) {
         console.error("No contact email found")
+
+        // Try to get email from booking record if not in session storage
+        if (bookingId) {
+          const { data: bookingData, error: bookingError } = await supabaseClient
+            .from("bookings")
+            .select("contactemail")
+            .eq("bookingid", bookingId)
+            .single()
+
+          if (!bookingError && bookingData && bookingData.contactemail) {
+            console.log("Retrieved email from booking record:", bookingData.contactemail)
+            setContactEmail(bookingData.contactemail)
+            sessionStorage.setItem("contactEmail", bookingData.contactemail)
+            return await sendConfirmationEmail(bookingId) // Retry with the retrieved email
+          }
+        }
+
+        // If we still don't have an email, log the error but don't throw an exception
+        console.error("Could not find contact email for confirmation")
         return
       }
 
       // Validate email format
-      if (!contactEmail.includes("@") || !contactEmail.includes(".")) {
-        console.error("Invalid email format:", contactEmail)
+      if (!emailToUse.includes("@") || !emailToUse.includes(".")) {
+        console.error("Invalid email format:", emailToUse)
         return
       }
 
-      console.log("Sending confirmation email to:", contactEmail)
+      console.log("Sending confirmation email to:", emailToUse)
 
       // Get booking details
       const { data: bookingData, error: bookingError } = await supabaseClient
@@ -234,7 +257,7 @@ export default function PaymentPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: contactEmail,
+          email: emailToUse,
           booking: bookingData,
           tickets: processedTickets,
         }),

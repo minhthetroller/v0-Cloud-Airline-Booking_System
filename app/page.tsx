@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import BookingForm from "@/components/booking-form"
@@ -26,6 +28,27 @@ export default function Home() {
     router.push("/profile")
   }
 
+  // New function to handle My Bookings click
+  const handleMyBookingsClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (isAuthenticated && user) {
+      router.push("/profile/booking-history")
+    } else {
+      setIsLoginModalOpen(true)
+    }
+  }
+
+  // New effect to redirect to profile after login
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const justLoggedIn = sessionStorage.getItem("justLoggedIn")
+      if (justLoggedIn === "true") {
+        sessionStorage.removeItem("justLoggedIn")
+        router.push("/profile")
+      }
+    }
+  }, [isAuthenticated, user, router])
+
   useEffect(() => {
     if (!userMenuOpen) {
       setDropdownView("main")
@@ -49,7 +72,7 @@ export default function Home() {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
+                <a href="#" onClick={handleMyBookingsClick} className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
                   {t("myBookings")}
                 </a>
               </li>
