@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase-client"
 import SeatMap from "@/components/seat-map"
 import LoginOrGuestDialog from "@/components/login-or-guest-dialog"
 
@@ -736,14 +736,52 @@ export default function SeatSelectionPage() {
     sessionStorage.setItem("totalPassengers", totalPassengers.toString())
     sessionStorage.setItem("passengerTypes", JSON.stringify(passengerTypes))
 
-    // Check if user is already logged in
-    const isLoggedIn = sessionStorage.getItem("isLoggedIn") === "true"
+    // Check if user is already logged in via cookie-based session
+    // IMPORTANT: Modified to use cookie-based authentication
+    try {
+      // Get session token from cookie
+      const cookies = document.cookie.split(";")
+      const sessionCookie = cookies.find((cookie) => cookie.trim().startsWith("session_token="))
+      const sessionToken = sessionCookie ? sessionCookie.trim().split("=")[1] : null
 
-    if (isLoggedIn) {
-      // If logged in, go directly to confirmation page
-      router.push("/confirmation")
-    } else {
-      // If not logged in, open login or guest dialog
+      if (sessionToken) {
+        // Query the sessions table to validate the token
+        const { data: sessionData, error: sessionError } = await supabaseClient
+          .from("sessions")
+          .select("userid, expires")
+          .eq("token", sessionToken)
+          .single()
+
+        if (sessionError) throw sessionError
+
+        // Check if session is valid and not expired
+        if (sessionData && new Date(sessionData.expires) > new Date()) {
+          // Session is valid, get user data
+          const { data: userData, error: userError } = await supabaseClient
+            .from("users")
+            .select("userid, customerid, username")
+            .eq("userid", sessionData.userid)
+            .single()
+
+          if (userError) throw userError
+
+          // Store user info in session storage
+          sessionStorage.setItem("isLoggedIn", "true")
+          sessionStorage.setItem("userEmail", userData.username)
+          sessionStorage.setItem("userId", userData.userid.toString())
+          sessionStorage.setItem("customerId", userData.customerid.toString())
+
+          // Redirect to guest information page
+          router.push("/guest-information")
+          return
+        }
+      }
+
+      // If we get here, user is not logged in or session is invalid
+      setLoginOrGuestDialogOpen(true)
+    } catch (error) {
+      console.error("Error checking authentication:", error)
+      // If there's an error, show the login dialog as fallback
       setLoginOrGuestDialogOpen(true)
     }
   }
@@ -777,9 +815,9 @@ export default function SeatSelectionPage() {
   }
 
   const handleLoginSuccess = () => {
-    // Close the dialog and redirect to confirmation page
+    // Close the dialog and redirect to guest information page
     setLoginOrGuestDialogOpen(false)
-    router.push("/confirmation")
+    router.push("/guest-information")
   }
 
   const handleGuestContinue = () => {
@@ -826,8 +864,6 @@ export default function SeatSelectionPage() {
 
   // Clean up reservations when component unmounts
   useEffect(() => {
-    const isNavigatingToNextStep = false
-
     return () => {
       // Only release seat reservations if navigating away without completing booking
       const cleanup = async () => {

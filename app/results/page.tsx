@@ -739,8 +739,11 @@ export default function ResultsPage() {
 
     // Store selected flight details in session storage
     sessionStorage.setItem("selectedDepartureFlight", JSON.stringify(selectedDepartureFlight))
+    sessionStorage.setItem("departureFlight", JSON.stringify(selectedDepartureFlight)) // Add this line to store with both keys
+
     if (isRoundTrip && selectedReturnFlight) {
       sessionStorage.setItem("selectedReturnFlight", JSON.stringify(selectedReturnFlight))
+      sessionStorage.setItem("returnFlight", JSON.stringify(selectedReturnFlight)) // Add this line to store with both keys
     }
 
     // Store passenger details again to ensure it's available

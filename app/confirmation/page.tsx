@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronRight, AlertCircle, Check, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
-import supabaseClient from "@/lib/supabase"
+import supabaseClient from "@/lib/supabase-client"
 
 interface SelectedFlightDetails {
   flightId: number
@@ -108,8 +108,10 @@ export default function ConfirmationPage() {
         setLoading(true)
 
         // Load flight details
-        const departureFlightData = sessionStorage.getItem("selectedDepartureFlight")
-        const returnFlightData = sessionStorage.getItem("selectedReturnFlight")
+        const departureFlightData =
+          sessionStorage.getItem("selectedDepartureFlight") || sessionStorage.getItem("departureFlight")
+        const returnFlightData =
+          sessionStorage.getItem("selectedReturnFlight") || sessionStorage.getItem("returnFlight")
 
         if (!departureFlightData) {
           throw new Error("No departure flight selected")
@@ -384,7 +386,7 @@ export default function ConfirmationPage() {
     try {
       if (!guestInfo) return null
 
-      // Create a new customer record - REMOVED customertype field as it doesn't exist in the schema
+      // Create a new customer record
       const { data: newCustomer, error: customerError } = await supabaseClient
         .from("customers")
         .insert({
@@ -519,17 +521,24 @@ export default function ConfirmationPage() {
         const passengerDepartureSeat = allDepartureSeats.length > i ? allDepartureSeats[i] : departureSeat
         const passengerReturnSeat = allReturnSeats.length > i ? allReturnSeats[i] : returnSeat
 
-        // Create passenger record
+        // Determine passenger type
+        let passengerType = "Adult"
+        const passengerTypesData = JSON.parse(sessionStorage.getItem("passengerTypes") || "{}")
+        if (i < passengerTypesData.adults) {
+          passengerType = "Adult"
+        } else if (i < passengerTypesData.adults + passengerTypesData.children) {
+          passengerType = "Child"
+        } else {
+          passengerType = "Infant"
+        }
+
+        // Create passenger record with only the required fields according to the schema
         const { data: passengerData, error: passengerError } = await supabaseClient
           .from("passengers")
           .insert({
             customerid: customerId,
             bookingid: bookingId,
-            passengertype: "Adult", // Default to Adult
-            firstname: passenger.firstName,
-            lastname: passenger.lastName,
-            passportnumber: passenger.passportNumber,
-            identitycardnumber: passenger.identityCardNumber,
+            passengertype: passengerType,
           })
           .select("passengerid")
           .single()
