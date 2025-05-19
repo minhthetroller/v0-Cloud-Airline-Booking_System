@@ -101,15 +101,15 @@ export default function SetPasswordPage() {
         return
       }
 
-      // Query the database to get the userId using the email
+      // Query the database to get the userId using the username field instead of email
       const { data: userData, error: userError } = await supabaseClient
         .from("users")
         .select("userid")
-        .eq("email", email)
+        .eq("username", email)
         .single()
 
       if (userError) {
-        console.error("Error finding user by email:", userError)
+        console.error("Error finding user by username:", userError)
         setError("Could not find user with the provided email. Please try again or contact support.")
         return
       }
