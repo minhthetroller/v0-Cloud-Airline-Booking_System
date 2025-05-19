@@ -75,11 +75,6 @@ export default function SetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Add this near the beginning of handleSubmit, after e.preventDefault()
-    console.log("Search params:", Object.fromEntries(searchParams.entries()))
-    console.log("Token:", token)
-    console.log("Email:", email)
-
     if (loading) return
 
     try {
@@ -100,85 +95,48 @@ export default function SetPasswordPage() {
       // Hash the password using js-sha256
       const hashedPassword = sha256(password)
 
-      // Get the user ID from the URL or try alternative sources
-      const userId = searchParams.get("userId") || searchParams.get("user_id") || searchParams.get("id")
-
-      // If userId is still not found, try to extract it from the token
-      if (!userId && token) {
-        try {
-          // Attempt to decode the token (assuming it's a JWT or similar format)
-          // This is a simple approach - the actual implementation depends on your token format
-          const tokenParts = token.split(".")
-          if (tokenParts.length > 1) {
-            const payload = JSON.parse(atob(tokenParts[1]))
-            if (payload.sub || payload.user_id || payload.id) {
-              const extractedUserId = payload.sub || payload.user_id || payload.id
-              console.log("Extracted userId from token:", extractedUserId)
-
-              // Use the extracted userId
-              const { error: updateError } = await supabaseClient
-                .from("users")
-                .update({
-                  password: hashedPassword,
-                  isactive: true,
-                })
-                .eq("userid", extractedUserId)
-
-              if (updateError) {
-                throw updateError
-              }
-
-              // Redirect to success page
-              router.push("/register/success")
-              return
-            }
-          }
-        } catch (tokenError) {
-          console.error("Error extracting userId from token:", tokenError)
-          // Continue with the normal flow, will show the userId not found error
-        }
-      }
-
-      if (!userId) {
-        // If we still don't have a userId, try to get it from the email
-        if (email) {
-          try {
-            // Query the database to find the user by email
-            const { data: userData, error: userError } = await supabaseClient
-              .from("users")
-              .select("userid")
-              .eq("email", email)
-              .single()
-
-            if (userError) throw userError
-
-            if (userData && userData.userid) {
-              // Use the found userId
-              const { error: updateError } = await supabaseClient
-                .from("users")
-                .update({
-                  password: hashedPassword,
-                  isactive: true,
-                })
-                .eq("userid", userData.userid)
-
-              if (updateError) {
-                throw updateError
-              }
-
-              // Redirect to success page
-              router.push("/register/success")
-              return
-            }
-          } catch (emailLookupError) {
-            console.error("Error finding user by email:", emailLookupError)
-            // Continue with the normal flow
-          }
-        }
-
-        setError("User ID not found. Please check your reset link or contact support.")
+      // Check if we have an email to query with
+      if (!email) {
+        setError("Email not found. Please try again or contact support.")
         return
       }
+
+      // Query the database to get the userId using the email
+      const { data: userData, error: userError } = await supabaseClient
+        .from("users")
+        .select("userid")
+        .eq("email", email)
+        .single()
+
+      if (userError) {
+        console.error("Error finding user by email:", userError)
+        setError("Could not find user with the provided email. Please try again or contact support.")
+        return
+      }
+
+      if (!userData || !userData.userid) {
+        setError("User not found with the provided email. Please try again or contact support.")
+        return
+      }
+
+      // Update the user's password in the database using the retrieved userId
+      const { error: updateError } = await supabaseClient
+        .from("users")
+        .update({
+          password: hashedPassword, // Store the hashed password
+          isactive: true,
+        })
+        .eq("userid", userData.userid)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      // Set success state and redirect to success page
+      setSuccess(true)
+      setTimeout(() => {
+        router.push("/register/success")
+      }, 1500)
     } catch (err: any) {
       console.error("Error setting password:", err)
       setError(err.message || "Failed to set password. Please try again.")
