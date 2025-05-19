@@ -123,8 +123,8 @@ export default function SetPasswordPage() {
       const { error: updateError } = await supabaseClient
         .from("users")
         .update({
-          password: hashedPassword, // Store the hashed password
-          accountstatus: "verified", // Changed from true to "verified" as this is a text field
+          passwordhash: hashedPassword, // Changed from password to passwordhash
+          accountstatus: "verified",
         })
         .eq("userid", userData.userid)
 
