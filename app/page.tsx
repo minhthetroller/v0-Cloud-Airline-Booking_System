@@ -28,7 +28,7 @@ export default function Home() {
     router.push("/profile")
   }
 
-  // New function to handle My Bookings click
+  // Function to handle My Bookings click
   const handleMyBookingsClick = (e: React.MouseEvent) => {
     e.preventDefault()
     if (isAuthenticated && user) {
@@ -38,7 +38,7 @@ export default function Home() {
     }
   }
 
-  // New effect to redirect to profile after login
+  // Effect to redirect to profile after login
   useEffect(() => {
     if (isAuthenticated && user) {
       const justLoggedIn = sessionStorage.getItem("justLoggedIn")
@@ -77,9 +77,9 @@ export default function Home() {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
-                  {t("cosmile")}
-                </a>
+                <Link href="/booking-status" className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
+                  Booking Status
+                </Link>
               </li>
             </ul>
           </nav>

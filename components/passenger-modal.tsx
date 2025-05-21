@@ -172,6 +172,7 @@ export default function PassengerModal({
               <SelectContent>
                 <SelectItem value="economy-saver">Economy Saver</SelectItem>
                 <SelectItem value="economy-flex">Economy Flex</SelectItem>
+                <SelectItem value="premium-economy">Premium Economy</SelectItem>
                 <SelectItem value="business">Business</SelectItem>
                 <SelectItem value="first">First Class</SelectItem>
               </SelectContent>

@@ -5,7 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, CreditCard, Building, ArrowLeft, Clock } from "lucide-react"
+import { AlertCircle, CreditCard, Building, ArrowLeft, Clock, Award } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,9 @@ export default function PaymentPage() {
   const [totalPrice, setTotalPrice] = useState<number>(0)
   const [paymentId, setPaymentId] = useState<string | null>(null)
   const [contactEmail, setContactEmail] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [pointsToAdd, setPointsToAdd] = useState<number>(0)
 
   // Card payment state
   const [cardNumber, setCardNumber] = useState("")
@@ -41,12 +44,23 @@ export default function PaymentPage() {
     const storedTotalPrice = sessionStorage.getItem("totalPrice")
     const storedPaymentId = sessionStorage.getItem("paymentId")
     const storedContactEmail = sessionStorage.getItem("contactEmail")
+    const storedIsLoggedIn = sessionStorage.getItem("isLoggedIn")
+    const storedUserId = sessionStorage.getItem("userId")
 
     if (storedBookingId) setBookingId(storedBookingId)
     if (storedBookingReference) setBookingReference(storedBookingReference)
-    if (storedTotalPrice) setTotalPrice(Number.parseFloat(storedTotalPrice))
+    if (storedTotalPrice) {
+      const price = Number.parseFloat(storedTotalPrice)
+      setTotalPrice(price)
+
+      // Calculate points (500,000 VND = 1 point)
+      const points = Math.floor(price / 500000)
+      setPointsToAdd(points)
+    }
     if (storedPaymentId) setPaymentId(storedPaymentId)
     if (storedContactEmail) setContactEmail(storedContactEmail)
+    if (storedIsLoggedIn === "true") setIsLoggedIn(true)
+    if (storedUserId) setUserId(storedUserId)
 
     // Create payment record in database
     const createPaymentRecord = async () => {
@@ -274,6 +288,42 @@ export default function PaymentPage() {
     }
   }
 
+  // Function to add points to user's account
+  const addPointsToUser = async () => {
+    if (!isLoggedIn || !userId || pointsToAdd <= 0) return
+
+    try {
+      // Get current points
+      const { data: userData, error: userError } = await supabaseClient
+        .from("users")
+        .select("pointsavailable")
+        .eq("userid", userId)
+        .single()
+
+      if (userError) {
+        console.error("Error fetching user points:", userError)
+        return
+      }
+
+      const currentPoints = userData.pointsavailable || 0
+      const newPoints = currentPoints + pointsToAdd
+
+      // Update user points
+      const { error: updateError } = await supabaseClient
+        .from("users")
+        .update({ pointsavailable: newPoints })
+        .eq("userid", userId)
+
+      if (updateError) {
+        console.error("Error updating user points:", updateError)
+      } else {
+        console.log(`Added ${pointsToAdd} points to user. New total: ${newPoints}`)
+      }
+    } catch (err) {
+      console.error("Error adding points to user:", err)
+    }
+  }
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -332,6 +382,11 @@ export default function PaymentPage() {
         if (error) {
           throw new Error(`Failed to update payment: ${error.message}`)
         }
+      }
+
+      // Add points to user if logged in
+      if (isLoggedIn && userId) {
+        await addPointsToUser()
       }
 
       // Simulate payment processing
@@ -466,6 +521,17 @@ export default function PaymentPage() {
               <p className="text-2xl font-bold">{new Intl.NumberFormat("vi-VN").format(totalPrice || 1500000)}</p>
             </div>
           </div>
+
+          {/* Points information for logged-in users */}
+          {isLoggedIn && pointsToAdd > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center text-green-600">
+                <Award className="h-5 w-5 mr-2" />
+                <p className="font-medium">You will earn {pointsToAdd} points with this purchase!</p>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">Points are calculated at a rate of 1 point per 500,000 VND</p>
+            </div>
+          )}
         </div>
 
         <h2 className="text-xl font-bold mb-4 max-w-2xl mx-auto">Payment options</h2>
