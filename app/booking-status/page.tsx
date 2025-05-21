@@ -69,7 +69,9 @@ export default function BookingStatusPage() {
       )
 
       if (!lastNameMatch) {
-        throw new Error("Last name does not match any passenger on this booking.")
+        throw new Error(
+          "The last name you entered does not match any passenger on this booking. Please check and try again.",
+        )
       }
 
       // Step 3: Get tickets for this booking
@@ -118,16 +120,27 @@ export default function BookingStatusPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#f8f9fa] to-white">
-      <div className="container mx-auto px-4 py-8">
-        <header className="mb-8 flex items-center justify-between">
-          <Link href="/">
-            <Image src="/logo.png" alt="STARLUX Airlines Logo" width={180} height={60} className="h-8 w-auto" />
-          </Link>
-        </header>
+    // Changed background color here to match the search button
+    <main className="min-h-screen bg-[#0f2d3c]">
+      {/* Added a div with white background for the header section */}
+      <div className="w-full bg-white">
+        <div className="container mx-auto px-4 py-8">
+          {/* Modified header to match main_page.tsx: added mb-4 and wrapped logo */}
+          <header className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Link href="/">
+                <Image src="/logo.png" alt="STARLUX Airlines Logo" width={180} height={60} className="h-8 w-auto" />
+              </Link>
+            </div>
+          </header>
+        </div>
+      </div>
 
+      {/* Added some top padding to separate content from the new header background */}
+      <div className="container mx-auto px-4 py-8 pt-8">
         <div className="mx-auto max-w-3xl">
-          <h1 className="mb-6 text-3xl font-bold text-[#0f2d3c]">Check Booking Status</h1>
+          {/* Changed text color to white for better contrast on the new background */}
+          <h1 className="mb-6 text-3xl font-bold text-white">Check Booking Status</h1>
 
           <div className="mb-8 rounded-lg bg-white p-6 shadow-md">
             <form onSubmit={handleSearch} className="space-y-4">

@@ -484,34 +484,27 @@ export default function ConfirmationPage() {
       const totalPrice = calculateTotalPrice()
       console.log("Total price for booking:", totalPrice)
 
-      // Create booking record
-      const { data: bookingData, error: bookingError } = await supabaseClient
+      // Update existing booking record status to "Confirmed" instead of creating a new one
+      const bookingId = sessionStorage.getItem("bookingId")
+      if (!bookingId) {
+        throw new Error("Booking ID not found. Please try again.")
+      }
+
+      // Update the booking status to "Confirmed"
+      const { error: updateBookingError } = await supabaseClient
         .from("bookings")
-        .insert({
-          bookingdatetime: new Date().toISOString(),
+        .update({
           bookingstatus: "Confirmed",
-          totalprice: totalPrice,
-          currencycode: "VND",
-          bookingreference: bookingReference,
-          userid: isLoggedIn ? userId : null, // Set userid if logged in, otherwise null
+          totalprice: totalPrice, // Update the total price in case it changed
         })
-        .select("bookingid")
-        .single()
+        .eq("bookingid", bookingId)
 
-      if (bookingError) {
-        console.error("Error creating booking:", bookingError)
-        throw new Error(`Error creating booking: ${bookingError.message}`)
+      if (updateBookingError) {
+        console.error("Error updating booking status:", updateBookingError)
+        throw new Error(`Error updating booking status: ${updateBookingError.message}`)
       }
 
-      if (!bookingData || !bookingData.bookingid) {
-        throw new Error("Failed to get booking ID after creation")
-      }
-
-      const bookingId = bookingData.bookingid
-      console.log("Created booking with ID:", bookingId)
-      setExistingBookingId(bookingId)
-      sessionStorage.setItem("bookingId", bookingId)
-      sessionStorage.setItem("bookingReference", bookingReference)
+      console.log("Updated booking status to Confirmed for ID:", bookingId)
 
       // Create passenger records for each passenger
       for (let i = 0; i < passengers.length; i++) {
