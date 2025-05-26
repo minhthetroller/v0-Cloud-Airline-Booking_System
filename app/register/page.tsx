@@ -16,18 +16,62 @@ export default function RegisterPage() {
   const [ageVerified, setAgeVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false)
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return re.test(email)
   }
 
-  const handleNext = () => {
-    // Validate email
+  const handleNext = async () => {
+    setError(null)
+
+    // Validate email format
     if (!email || !validateEmail(email)) {
       setError("Please enter a valid email address")
       return
     }
+
+    // Check email uniqueness
+    setIsCheckingEmail(true)
+    try {
+      const response = await fetch("/api/check-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: email.toLowerCase() }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error("API Error:", errorData)
+        setError("Unable to verify email. Please check your connection and try again.")
+        setIsCheckingEmail(false)
+        return
+      }
+
+      const result = await response.json()
+
+      if (result.error) {
+        console.error("Server Error:", result.error)
+        setError("Unable to verify email. Please try again later.")
+        setIsCheckingEmail(false)
+        return
+      }
+
+      if (result.exists) {
+        setError("This email is already registered. Please use a different email or try logging in.")
+        setIsCheckingEmail(false)
+        return
+      }
+    } catch (error) {
+      console.error("Network Error:", error)
+      setError("Network error occurred. Please check your internet connection and try again.")
+      setIsCheckingEmail(false)
+      return
+    }
+    setIsCheckingEmail(false)
 
     // Validate terms and age
     if (!termsAccepted || !ageVerified) {
@@ -94,7 +138,7 @@ export default function RegisterPage() {
                   className="mt-1"
                 />
                 <Label htmlFor="terms" className="text-sm text-[#0f2d3c]">
-                  I have read and agree to the COSMILE Terms and conditions and STARLUX Airlines Privacy Policy.
+                  I have read and agree to the COSMILE Terms and conditions and Cloud Airlines Privacy Policy.
                 </Label>
               </div>
 
@@ -125,13 +169,13 @@ export default function RegisterPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                   />
                 </svg>
               </Link>
 
               <Link href="/privacy" className="flex items-center hover:underline">
-                STARLUX Airlines Privacy Policy
+                Cloud Airlines Privacy Policy
                 <svg
                   className="ml-1 h-4 w-4"
                   fill="none"
@@ -150,8 +194,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleNext} className="bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white px-8">
-                Next
+              <Button
+                onClick={handleNext}
+                disabled={isCheckingEmail}
+                className="bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white px-8"
+              >
+                {isCheckingEmail ? "Checking..." : "Next"}
               </Button>
             </div>
           </div>
