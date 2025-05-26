@@ -170,9 +170,9 @@ function ResetPassword() {
 
   if (validToken === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f2d3c]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#8a7a4e] mx-auto"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#9b6a4f] mx-auto"></div>
           <p className="mt-4 text-gray-600">Verifying reset link...</p>
         </div>
       </div>
@@ -181,14 +181,14 @@ function ResetPassword() {
 
   if (validToken === false) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md w-96 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f2d3c]">
+        <div className="bg-[#0a1e29] p-8 rounded-lg shadow-md w-96 text-center">
           <Image src="/logo.png" alt="COSMILE Logo" width={180} height={60} className="h-12 w-auto mx-auto mb-6" />
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
-          <Button onClick={() => router.push("/")} className="w-full mt-4 bg-[#8a7a4e] hover:bg-[#8a7a4e]/90">
+          <Button onClick={() => router.push("/")} className="w-full mt-4 bg-[#9b6a4f] hover:bg-[#8a5a42]">
             Back to Home
           </Button>
         </div>
@@ -198,8 +198,8 @@ function ResetPassword() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md w-96 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f2d3c]">
+        <div className="bg-[#0a1e29] p-8 rounded-lg shadow-md w-96 text-center">
           <Image src="/logo.png" alt="COSMILE Logo" width={180} height={60} className="h-12 w-auto mx-auto mb-6" />
           <Alert className="border-green-200 bg-green-50">
             <CheckCircle className="h-4 w-4 text-green-600" />
@@ -213,12 +213,12 @@ function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
+    <div className="min-h-screen flex items-center justify-center bg-[#0f2d3c]">
+      <div className="bg-[#0a1e29] p-8 rounded-lg shadow-md w-96">
         <div className="text-center mb-6">
           <Image src="/logo.png" alt="COSMILE Logo" width={180} height={60} className="h-12 w-auto mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-[#0f2d3c]">Reset Password</h1>
-          <p className="text-gray-600 mt-2">Enter your new password</p>
+          <h1 className="text-2xl font-bold text-white">Reset Password</h1>
+          <p className="text-gray-400 mt-2">Enter your new password</p>
         </div>
 
         {error && (
@@ -241,7 +241,7 @@ function ResetPassword() {
                   setPassword(e.target.value)
                   validatePassword(e.target.value)
                 }}
-                className="border-gray-300 pr-10"
+                className="border-gray-300 pr-10 bg-[#0f2d3c] border-[#1a3a4a] text-white"
               />
               <button
                 type="button"
@@ -300,7 +300,7 @@ function ResetPassword() {
                 placeholder="Confirm new password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="border-gray-300 pr-10"
+                className="border-gray-300 pr-10 bg-[#0f2d3c] border-[#1a3a4a] text-white"
               />
               <button
                 type="button"
@@ -314,7 +314,7 @@ function ResetPassword() {
 
           <Button
             type="submit"
-            className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white"
+            className="w-full bg-[#9b6a4f] hover:bg-[#8a5a42] text-white"
             disabled={loading || !passwordStrength.isValid}
           >
             {loading ? "Resetting..." : "Reset Password"}

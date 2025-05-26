@@ -55,37 +55,6 @@ interface BookingHistory {
   price: number
 }
 
-const mockPointHistory = [
-  {
-    id: 1,
-    date: "2024-01-15",
-    description: "Flight booking - SGN to HAN",
-    points: 250,
-    type: "earned",
-  },
-  {
-    id: 2,
-    date: "2024-01-10",
-    description: "Tier bonus points",
-    points: 100,
-    type: "earned",
-  },
-  {
-    id: 3,
-    date: "2023-12-20",
-    description: "Flight booking - HAN to SGN",
-    points: 300,
-    type: "earned",
-  },
-  {
-    id: 4,
-    date: "2023-12-15",
-    description: "Upgrade redemption",
-    points: -500,
-    type: "redeemed",
-  },
-]
-
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("account")
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -98,11 +67,13 @@ export default function ProfilePage() {
   const [updateLoading, setUpdateLoading] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateSuccess, setUpdateSuccess] = useState(false)
-  const router = useRouter()
+  const [router, setRouter] = useState(useRouter())
   const { isAuthenticated, user: authUser, signOut } = useAuth()
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
   const [showPointHistory, setShowPointHistory] = useState(false)
+  const [pointHistory, setPointHistory] = useState<any[]>([])
+  const [pointHistoryLoading, setPointHistoryLoading] = useState(false)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -354,6 +325,39 @@ export default function ProfilePage() {
         return "/images/cirrus-card.png"
       default:
         return "/images/stratus-card.png"
+    }
+  }
+
+  const fetchPointHistory = async () => {
+    setPointHistoryLoading(true)
+    try {
+      const { data: bookingsData, error: bookingsError } = await supabaseClient
+        .from("bookings")
+        .select("*")
+        .eq("userid", sessionStorage.getItem("userId"))
+        .order("bookingdatetime", { ascending: false })
+
+      if (bookingsError) {
+        console.error("Error fetching bookings:", bookingsError)
+        return
+      }
+
+      const pointHistoryData = bookingsData.map((booking) => {
+        const points = Math.floor(booking.totalprice / 500000)
+        return {
+          id: booking.bookingid,
+          date: booking.bookingdatetime,
+          description: `Flight booking - ${booking.bookingreference}`,
+          points: points,
+          type: "earned",
+        }
+      })
+
+      setPointHistory(pointHistoryData)
+    } catch (error) {
+      console.error("Error fetching point history:", error)
+    } finally {
+      setPointHistoryLoading(false)
     }
   }
 
@@ -1077,7 +1081,10 @@ export default function ProfilePage() {
                       <div>
                         <Button
                           className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90 w-full"
-                          onClick={() => setShowPointHistory(true)}
+                          onClick={() => {
+                            setShowPointHistory(true)
+                            fetchPointHistory()
+                          }}
                         >
                           View Point History
                         </Button>
@@ -1186,24 +1193,30 @@ export default function ProfilePage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {mockPointHistory.map((transaction) => (
-                  <div key={transaction.id} className="flex justify-between items-center p-4 bg-[#0f2d3c] rounded-lg">
-                    <div>
-                      <p className="font-medium">{transaction.description}</p>
-                      <p className="text-sm text-gray-400">{format(new Date(transaction.date), "MMM dd, yyyy")}</p>
+              {pointHistoryLoading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pointHistory.map((transaction) => (
+                    <div key={transaction.id} className="flex justify-between items-center p-4 bg-[#0f2d3c] rounded-lg">
+                      <div>
+                        <p className="font-medium">{transaction.description}</p>
+                        <p className="text-sm text-gray-400">{format(new Date(transaction.date), "MMM dd, yyyy")}</p>
+                      </div>
+                      <div
+                        className={`text-lg font-bold ${
+                          transaction.type === "earned" ? "text-green-500" : "text-red-500"
+                        }`}
+                      >
+                        {transaction.type === "earned" ? "+" : ""}
+                        {transaction.points.toLocaleString()} pts
+                      </div>
                     </div>
-                    <div
-                      className={`text-lg font-bold ${
-                        transaction.type === "earned" ? "text-green-500" : "text-red-500"
-                      }`}
-                    >
-                      {transaction.type === "earned" ? "+" : ""}
-                      {transaction.points.toLocaleString()} pts
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-6 pt-4 border-t border-[#1a3a4a]">
                 <div className="flex justify-between items-center">
