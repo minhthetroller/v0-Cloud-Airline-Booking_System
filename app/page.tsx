@@ -61,16 +61,11 @@ export default function Home() {
         <header className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Link href="/">
-              <Image src="/logo.png" alt="STARLUX Airlines Logo" width={180} height={60} className="h-8 w-auto" />
+              <Image src="/logo.png" alt="Cloud Airlines Logo" width={180} height={60} className="h-8 w-auto" />
             </Link>
           </div>
           <nav className="hidden md:block">
             <ul className="flex gap-6">
-              <li>
-                <a href="#" className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
-                  {t("home")}
-                </a>
-              </li>
               <li>
                 <a href="#" onClick={handleMyBookingsClick} className="text-[#0f2d3c] hover:text-[#0f2d3c]/80">
                   {t("myBookings")}
@@ -277,6 +272,90 @@ export default function Home() {
           </div>
         </section>
       </div>
+      {/* Footer */}
+      <footer className="bg-[#0f2d3c] text-white py-8 mt-12">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div>
+              <h3 className="text-lg font-semibold mb-4">Cloud Airlines</h3>
+              <p className="text-gray-300">Your trusted partner for comfortable and reliable air travel.</p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Quick Links</h4>
+              <ul className="space-y-2 text-gray-300">
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Book a Flight
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Check-in
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Flight Status
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Manage Booking
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Support</h4>
+              <ul className="space-y-2 text-gray-300">
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Contact Us
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    FAQ
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Baggage Info
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Travel Guidelines
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-4">Connect</h4>
+              <ul className="space-y-2 text-gray-300">
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Newsletter
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Social Media
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white">
+                    Mobile App
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-[#1a3a4a] mt-8 pt-8 text-center text-gray-300">
+            <p>&copy; 2024 Cloud Airlines. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </main>
   )
 }

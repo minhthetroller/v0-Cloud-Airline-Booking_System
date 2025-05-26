@@ -177,12 +177,11 @@ export default function BookingHistoryPage() {
           .eq("bookingid", booking.bookingid)
           .order("paymentdatetime", { ascending: false })
           .limit(1)
-          .single()
 
         if (paymentError) {
           console.error("Error fetching payment details:", paymentError)
         } else {
-          booking.payment = paymentData
+          booking.payment = paymentData && paymentData.length > 0 ? paymentData[0] : null
         }
       } catch (err) {
         console.error("Error fetching booking details:", err)
@@ -213,14 +212,6 @@ export default function BookingHistoryPage() {
         .eq("bookingid", bookingToCancel)
 
       if (bookingUpdateError) throw new Error(`Failed to cancel booking: ${bookingUpdateError.message}`)
-
-      // 2. Update all tickets for this booking
-      const { error: ticketsUpdateError } = await supabaseClient
-        .from("tickets")
-        .update({ status: "Cancelled" })
-        .eq("bookingid", bookingToCancel)
-
-      if (ticketsUpdateError) console.error("Error updating tickets:", ticketsUpdateError)
 
       // 3. Update the flights status if needed (optional)
       // This would depend on your business logic - we're not updating flight status here
@@ -345,7 +336,7 @@ export default function BookingHistoryPage() {
                     <div className="flex space-x-2">
                       <Button
                         variant="outline"
-                        className="border-[#9b6a4f] text-[#9b6a4f] flex items-center"
+                        className="border-[#9b6a4f] text-[#9b6a4f] hover:bg-[#9b6a4f] hover:text-white transition-colors flex items-center"
                         onClick={() => toggleBookingDetails(index)}
                       >
                         {booking.expanded ? (
@@ -362,7 +353,7 @@ export default function BookingHistoryPage() {
                       {booking.bookingstatus !== "Cancelled" && (
                         <Button
                           variant="outline"
-                          className="border-red-500 text-red-500 flex items-center"
+                          className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors flex items-center"
                           onClick={() => openCancelDialog(booking.bookingid)}
                         >
                           <X className="mr-1 h-4 w-4" /> Cancel
@@ -386,7 +377,9 @@ export default function BookingHistoryPage() {
                                     <Plane className="mr-2 h-4 w-4 text-[#9b6a4f]" />
                                     <span>{ticket.flights?.flightnumber}</span>
                                   </div>
-                                  <span className="text-sm">Ticket #{ticket.ticketid.substring(0, 8)}</span>
+                                  <span className="text-sm">
+                                    Ticket #{ticket.ticketid ? String(ticket.ticketid).substring(0, 8) : "N/A"}
+                                  </span>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -558,7 +551,7 @@ export default function BookingHistoryPage() {
             </div>
           </div>
 
-          <DialogFooter className="flex space-x-2 sm:space-x-0">
+          <DialogFooter className="flex gap-3 sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(false)} disabled={cancelLoading}>
               Keep My Booking
             </Button>

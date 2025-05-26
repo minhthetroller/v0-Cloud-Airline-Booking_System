@@ -55,6 +55,37 @@ interface BookingHistory {
   price: number
 }
 
+const mockPointHistory = [
+  {
+    id: 1,
+    date: "2024-01-15",
+    description: "Flight booking - SGN to HAN",
+    points: 250,
+    type: "earned",
+  },
+  {
+    id: 2,
+    date: "2024-01-10",
+    description: "Tier bonus points",
+    points: 100,
+    type: "earned",
+  },
+  {
+    id: 3,
+    date: "2023-12-20",
+    description: "Flight booking - HAN to SGN",
+    points: 300,
+    type: "earned",
+  },
+  {
+    id: 4,
+    date: "2023-12-15",
+    description: "Upgrade redemption",
+    points: -500,
+    type: "redeemed",
+  },
+]
+
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("account")
   const [user, setUser] = useState<UserProfile | null>(null)
@@ -71,6 +102,7 @@ export default function ProfilePage() {
   const { isAuthenticated, user: authUser, signOut } = useAuth()
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false)
   const { language, setLanguage, t } = useLanguage()
+  const [showPointHistory, setShowPointHistory] = useState(false)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -217,40 +249,68 @@ export default function ProfilePage() {
     setUpdateSuccess(false)
 
     try {
-      // Update customer details
-      const { error: updateError } = await supabaseClient
-        .from("customers")
-        .update({
-          pronoun: formData.pronoun,
-          firstname: formData.firstname,
-          lastname: formData.lastname,
-          dateofbirth: formData.dateofbirth,
-          gender: formData.gender,
-          nationality: formData.nationality,
-          identitycardnumber: formData.identitycardnumber,
-          phonenumber: formData.phonenumber,
-          addressline: formData.addressline,
-          city: formData.city,
-          country: formData.country,
-        })
-        .eq("email", user.email)
+      // Check if identity card number is already taken by another customer
+      if (formData.identitycardnumber && formData.identitycardnumber !== customerDetails?.identitycardnumber) {
+        const { data: existingCustomer, error: checkError } = await supabaseClient
+          .from("customers")
+          .select("customerid")
+          .eq("identitycardnumber", formData.identitycardnumber)
+          .neq("customerid", sessionStorage.getItem("customerId"))
+          .single()
 
-      if (updateError) throw updateError
+        if (checkError && checkError.code !== "PGRST116") {
+          throw checkError
+        }
 
-      // Update user metadata in auth
-      const { error: authUpdateError } = await supabaseClient.auth.updateUser({
-        data: {
-          title: formData.pronoun,
-          first_name: formData.firstname,
-          last_name: formData.lastname,
-        },
-      })
+        if (existingCustomer) {
+          setUpdateError("This identity card number is already registered to another account.")
+          return
+        }
+      }
 
-      if (authUpdateError) throw authUpdateError
+      // Build update object with only changed fields
+      const updateData: any = {}
+      if (formData.pronoun !== customerDetails?.pronoun) updateData.pronoun = formData.pronoun
+      if (formData.firstname !== customerDetails?.firstname) updateData.firstname = formData.firstname
+      if (formData.lastname !== customerDetails?.lastname) updateData.lastname = formData.lastname
+      if (formData.dateofbirth !== customerDetails?.dateofbirth) updateData.dateofbirth = formData.dateofbirth
+      if (formData.gender !== customerDetails?.gender) updateData.gender = formData.gender
+      if (formData.nationality !== customerDetails?.nationality) updateData.nationality = formData.nationality
+      if (formData.identitycardnumber !== customerDetails?.identitycardnumber)
+        updateData.identitycardnumber = formData.identitycardnumber
+      if (formData.phonenumber !== customerDetails?.phonenumber) updateData.phonenumber = formData.phonenumber
+      if (formData.addressline !== customerDetails?.addressline) updateData.addressline = formData.addressline
+      if (formData.city !== customerDetails?.city) updateData.city = formData.city
+      if (formData.country !== customerDetails?.country) updateData.country = formData.country
+
+      // Only update if there are changes
+      if (Object.keys(updateData).length > 0) {
+        const { error: updateError } = await supabaseClient
+          .from("customers")
+          .update(updateData)
+          .eq("customerid", sessionStorage.getItem("customerId"))
+
+        if (updateError) {
+          if (updateError.code === "23505") {
+            if (updateError.message.includes("identitycardnumber")) {
+              setUpdateError("This identity card number is already registered to another account.")
+            } else {
+              setUpdateError("A unique constraint violation occurred. Please check your information.")
+            }
+            return
+          }
+          throw updateError
+        }
+      }
 
       setCustomerDetails(formData)
       setUpdateSuccess(true)
       setEditMode(false)
+
+      // Auto-hide success message after 3 seconds
+      setTimeout(() => {
+        setUpdateSuccess(false)
+      }, 3000)
 
       // Update user display name
       setUser({
@@ -261,7 +321,15 @@ export default function ProfilePage() {
       })
     } catch (err: any) {
       console.error("Error updating profile:", err)
-      setUpdateError(err.message || "Failed to update profile. Please try again.")
+      if (err.code === "23505") {
+        if (err.message.includes("identitycardnumber")) {
+          setUpdateError("This identity card number is already registered to another account.")
+        } else {
+          setUpdateError("A unique constraint violation occurred. Please check your information.")
+        }
+      } else {
+        setUpdateError(err.message || "Failed to update profile. Please try again.")
+      }
     } finally {
       setUpdateLoading(false)
     }
@@ -320,7 +388,7 @@ export default function ProfilePage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center">
             <Link href="/">
-              <Image src="/logo.png" alt="STARLUX Airlines" width={180} height={60} className="h-8 w-auto" />
+              <Image src="/logo.png" alt="Cloud Airlines" width={180} height={60} className="h-8 w-auto" />
             </Link>
           </div>
           <div className="flex items-center space-x-6">
@@ -427,7 +495,10 @@ export default function ProfilePage() {
                   <p className="text-gray-400 mb-1">Tier</p>
                   <p className="text-xl text-[#9b6a4f] font-bold">{user.tier}</p>
                   <TierBenefitsModal currentTier={userTier}>
-                    <button className="text-[#9b6a4f] text-sm mt-2 flex items-center hover:underline cursor-pointer">
+                    <button
+                      type="button"
+                      className="text-[#9b6a4f] text-sm mt-2 flex items-center hover:underline cursor-pointer"
+                    >
                       Privileges of other tiers
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -603,7 +674,7 @@ export default function ProfilePage() {
                     <Button
                       onClick={() => setEditMode(true)}
                       variant="outline"
-                      className="border-[#9b6a4f] text-[#9b6a4f]"
+                      className="border-[#9b6a4f] text-[#9b6a4f] hover:bg-[#9b6a4f] hover:text-white transition-colors"
                     >
                       <Edit2 className="mr-2 h-4 w-4" /> Edit
                     </Button>
@@ -617,13 +688,13 @@ export default function ProfilePage() {
                           setUpdateSuccess(false)
                         }}
                         variant="outline"
-                        className="border-red-500 text-red-500"
+                        className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
                       >
                         <X className="mr-2 h-4 w-4" /> Cancel
                       </Button>
                       <Button
                         onClick={handleUpdateProfile}
-                        className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90"
+                        className="bg-[#9b6a4f] hover:bg-[#8a5a42] text-white transition-colors"
                         disabled={updateLoading}
                       >
                         <Check className="mr-2 h-4 w-4" /> Save
@@ -1004,7 +1075,12 @@ export default function ProfilePage() {
                       </div>
 
                       <div>
-                        <Button className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90 w-full">View Point History</Button>
+                        <Button
+                          className="bg-[#9b6a4f] hover:bg-[#9b6a4f]/90 w-full"
+                          onClick={() => setShowPointHistory(true)}
+                        >
+                          View Point History
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1027,7 +1103,6 @@ export default function ProfilePage() {
                           <th className="text-left py-3 px-4">Date</th>
                           <th className="text-left py-3 px-4">Status</th>
                           <th className="text-left py-3 px-4">Price</th>
-                          <th className="text-left py-3 px-4">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1062,11 +1137,6 @@ export default function ProfilePage() {
                               </span>
                             </td>
                             <td className="py-4 px-4">{booking.price.toLocaleString()} VND</td>
-                            <td className="py-4 px-4">
-                              <Button variant="outline" size="sm" className="border-[#9b6a4f] text-[#9b6a4f]">
-                                View Details
-                              </Button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1104,6 +1174,46 @@ export default function ProfilePage() {
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Point History Modal */}
+        {showPointHistory && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#0a1e29] rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold">Point History</h3>
+                <button onClick={() => setShowPointHistory(false)} className="text-gray-400 hover:text-white">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {mockPointHistory.map((transaction) => (
+                  <div key={transaction.id} className="flex justify-between items-center p-4 bg-[#0f2d3c] rounded-lg">
+                    <div>
+                      <p className="font-medium">{transaction.description}</p>
+                      <p className="text-sm text-gray-400">{format(new Date(transaction.date), "MMM dd, yyyy")}</p>
+                    </div>
+                    <div
+                      className={`text-lg font-bold ${
+                        transaction.type === "earned" ? "text-green-500" : "text-red-500"
+                      }`}
+                    >
+                      {transaction.type === "earned" ? "+" : ""}
+                      {transaction.points.toLocaleString()} pts
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-[#1a3a4a]">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Current Balance:</span>
+                  <span className="text-xl font-bold text-[#9b6a4f]">{user.points.toLocaleString()} points</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

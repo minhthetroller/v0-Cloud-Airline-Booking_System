@@ -9,8 +9,8 @@ import { LanguageProvider } from "@/lib/language-context"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "STARLUX Airlines",
-  description: "Book your flights with STARLUX Airlines",
+  title: "Cloud Airlines",
+  description: "Book your flights with Cloud Airlines",
     generator: 'v0.dev'
 }
 

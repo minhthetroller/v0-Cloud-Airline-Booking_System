@@ -13,9 +13,9 @@ export async function POST(request: Request) {
     }
 
     // Validate email format
-    if (!email.includes("@") || !email.includes(".")) {
+    if (!email || typeof email !== "string" || !email.includes("@") || !email.includes(".")) {
       console.error("Invalid email format:", email)
-      return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
+      return NextResponse.json({ error: `Invalid email format: ${email || "undefined"}` }, { status: 400 })
     }
 
     console.log("Sending confirmation email to:", email)
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-          <title>Your Booking Confirmation - Cloud Airline</title>
+          <title>Your Booking Confirmation - Cloud Airlines</title>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -85,12 +85,12 @@ export async function POST(request: Request) {
         <body>
           <div class="container">
             <div class="header">
-              <img src="https://www.cloud-airlines.space/logo.png" alt="Cloud Airline" width="180" />
+              <img src="https://www.cloud-airlines.space/logo.png" alt="Cloud Airlines" width="180" />
             </div>
             <div class="content">
               <h1 style="color: #0f2d3c; font-size: 24px; text-align: center;">Booking Confirmation</h1>
               <p>Dear valued customer,</p>
-              <p>Thank you for booking with Cloud Airline. Your booking has been confirmed and your payment has been processed successfully.</p>
+              <p>Thank you for booking with Cloud Airlines. Your booking has been confirmed and your payment has been processed successfully.</p>
               
               <div style="background-color: #f8f5f2; padding: 15px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 0;"><strong>Booking Reference:</strong> ${booking.bookingreference}</p>
@@ -120,10 +120,10 @@ export async function POST(request: Request) {
               
               <p>We look forward to welcoming you on board!</p>
               
-              <p>Best regards,<br>Cloud Airline Team</p>
+              <p>Best regards,<br>Cloud Airlines Team</p>
             </div>
             <div class="footer">
-              <p>© ${new Date().getFullYear()} Cloud Airline. All rights reserved.</p>
+              <p>© ${new Date().getFullYear()} Cloud Airlines. All rights reserved.</p>
               <p>
                 <a href="https://www.cloud-airlines.space/privacy" style="color: #8898aa;">Privacy Policy</a> •
                 <a href="https://www.cloud-airlines.space/terms" style="color: #8898aa;">Terms of Service</a>

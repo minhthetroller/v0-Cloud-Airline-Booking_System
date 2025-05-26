@@ -51,7 +51,10 @@ export default function TicketConfirmationPage() {
       // Get booking ID from session storage
       const storedBookingId = sessionStorage.getItem("bookingId")
       const storedBookingReference = sessionStorage.getItem("bookingReference")
-      const storedContactEmail = sessionStorage.getItem("contactEmail")
+      const storedContactEmail =
+        sessionStorage.getItem("contactEmail") ||
+        sessionStorage.getItem("userEmail") ||
+        sessionStorage.getItem("guestEmail")
 
       if (!storedBookingId) {
         throw new Error("Booking ID not found")
@@ -169,6 +172,49 @@ export default function TicketConfirmationPage() {
     } catch (err: any) {
       console.error("Error fetching ticket details:", err)
       setError(err.message || "Failed to load ticket details")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendEmail = async () => {
+    if (!contactEmail || !bookingReference || tickets.length === 0) {
+      setError("Missing required information to resend email")
+      return
+    }
+
+    try {
+      setLoading(true)
+
+      // Get booking details
+      const { data: bookingData, error: bookingError } = await supabaseClient
+        .from("bookings")
+        .select("*")
+        .eq("bookingid", bookingId)
+        .single()
+
+      if (bookingError) throw bookingError
+
+      const response = await fetch("/api/send-ticket-confirmation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: contactEmail,
+          booking: bookingData,
+          tickets: tickets,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to resend email")
+      }
+
+      alert("Confirmation email sent successfully!")
+    } catch (err: any) {
+      console.error("Error resending email:", err)
+      setError("Failed to resend email. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -436,11 +482,16 @@ export default function TicketConfirmationPage() {
         </section>
 
         {/* Actions */}
-        <div className="flex justify-center max-w-3xl mx-auto">
+        <div className="flex justify-center space-x-4 max-w-3xl mx-auto">
           <Button onClick={handleReturnHome} className="bg-green-600 hover:bg-green-700">
             <Home className="h-4 w-4 mr-2" />
             Return to Home Page
           </Button>
+          {contactEmail && (
+            <Button onClick={handleResendEmail} variant="outline" className="border-[#9b6a4f] text-[#9b6a4f]">
+              Resend Email
+            </Button>
+          )}
         </div>
       </div>
     </main>

@@ -29,7 +29,15 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("")
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState<string | null>(null)
   const router = useRouter()
+
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const [isLocked, setIsLocked] = useState(false)
+  const [lockoutTime, setLockoutTime] = useState<Date | null>(null)
 
   // Cookie helper functions
   function setCookie(name: string, value: string, days: number) {
@@ -38,8 +46,26 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Strict`
   }
 
+  const checkLockout = () => {
+    if (lockoutTime && new Date() < lockoutTime) {
+      const remainingTime = Math.ceil((lockoutTime.getTime() - new Date().getTime()) / 1000 / 60)
+      setError(`Account temporarily locked. Try again in ${remainingTime} minutes.`)
+      return true
+    }
+    if (lockoutTime && new Date() >= lockoutTime) {
+      setIsLocked(false)
+      setLockoutTime(null)
+      setFailedAttempts(0)
+    }
+    return false
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (checkLockout()) {
+      return
+    }
 
     if (!email || !password) {
       setError("Please enter both email and password")
@@ -109,11 +135,97 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
       // Force a refresh of the page to ensure auth state is updated
       window.location.href = "/profile"
+
+      setFailedAttempts(0)
+      setIsLocked(false)
+      setLockoutTime(null)
     } catch (err: any) {
       console.error("Login error:", err)
-      setError(err.message || "Failed to sign in. Please check your credentials.")
+
+      const newFailedAttempts = failedAttempts + 1
+      setFailedAttempts(newFailedAttempts)
+
+      if (newFailedAttempts >= 5) {
+        const lockTime = new Date()
+        lockTime.setMinutes(lockTime.getMinutes() + 15) // 15 minute lockout
+        setLockoutTime(lockTime)
+        setIsLocked(true)
+        setError("Too many failed attempts. Account locked for 15 minutes.")
+      } else {
+        setError(
+          `${err.message || "Failed to sign in. Please check your credentials."} (${5 - newFailedAttempts} attempts remaining)`,
+        )
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!forgotPasswordEmail) {
+      setError("Please enter your email address")
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setError(null)
+    setForgotPasswordMessage(null)
+
+    try {
+      // Check if user exists
+      const { data: userCheck, error: userCheckError } = await supabaseClient
+        .from("users")
+        .select("userid, username")
+        .eq("username", forgotPasswordEmail)
+        .single()
+
+      if (userCheckError) {
+        throw new Error("Email address not found")
+      }
+
+      // Generate reset token
+      // const resetToken = uuidv4()
+      // const expires = new Date()
+      // expires.setHours(expires.getHours() + 1) // Token expires in 1 hour
+
+      // Store reset token in database
+      // const { error: tokenError } = await supabaseClient.from("password_resets").insert({
+      //   userid: userCheck.userid,
+      //   token: resetToken,
+      //   expires: expires.toISOString(),
+      //   used: false,
+      // })
+
+      // if (tokenError) {
+      //   console.error("Token creation error:", tokenError)
+      //   throw new Error("Failed to create reset token")
+      // }
+
+      // Send reset email
+      const response = await fetch("/api/send-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: forgotPasswordEmail,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to send reset email")
+      }
+
+      setForgotPasswordMessage("Password reset email sent! Please check your inbox.")
+      setForgotPasswordEmail("")
+    } catch (err: any) {
+      console.error("Forgot password error:", err)
+      setError(err.message || "Failed to send password reset email")
+    } finally {
+      setForgotPasswordLoading(false)
     }
   }
 
@@ -183,9 +295,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               </div>
 
               <div className="text-right">
-                <Link href="/forgot-password" className="text-sm text-[#0f2d3c] hover:underline">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-[#0f2d3c] hover:underline"
+                >
                   Forgot password
-                </Link>
+                </button>
               </div>
 
               <Button type="submit" className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white" disabled={loading}>
@@ -210,6 +326,60 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 </p>
               </div>
             </form>
+            {showForgotPassword && (
+              <div className="absolute inset-0 bg-white z-10 p-6 md:p-8">
+                <div className="flex items-center mb-6">
+                  <button
+                    onClick={() => {
+                      setShowForgotPassword(false)
+                      setError(null)
+                      setForgotPasswordMessage(null)
+                      setForgotPasswordEmail("")
+                    }}
+                    className="text-gray-500 hover:text-gray-700 mr-4"
+                  >
+                    ← Back
+                  </button>
+                  <h2 className="text-2xl font-bold text-[#0f2d3c]">Reset Password</h2>
+                </div>
+
+                {error && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                {forgotPasswordMessage && (
+                  <Alert className="mb-4 border-green-200 bg-green-50">
+                    <AlertCircle className="h-4 w-4 text-green-600" />
+                    <AlertDescription className="text-green-800">{forgotPasswordMessage}</AlertDescription>
+                  </Alert>
+                )}
+
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">Email Address</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="Enter your email address"
+                      value={forgotPasswordEmail}
+                      onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                      className="border-gray-300"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-[#8a7a4e] hover:bg-[#8a7a4e]/90 text-white"
+                    disabled={forgotPasswordLoading}
+                  >
+                    {forgotPasswordLoading ? "Sending..." : "Send Reset Email"}
+                  </Button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
