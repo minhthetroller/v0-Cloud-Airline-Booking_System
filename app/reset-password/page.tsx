@@ -230,7 +230,9 @@ function ResetPassword() {
 
         <form onSubmit={handleResetPassword} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">New Password</Label>
+            <Label htmlFor="password" className="text-white">
+              New Password
+            </Label>
             <div className="relative">
               <Input
                 id="password"
@@ -292,7 +294,9 @@ function ResetPassword() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Label htmlFor="confirmPassword" className="text-white">
+              Confirm Password
+            </Label>
             <div className="relative">
               <Input
                 id="confirmPassword"
